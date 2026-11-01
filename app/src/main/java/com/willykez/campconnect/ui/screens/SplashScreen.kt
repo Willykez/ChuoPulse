@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun SplashScreen(swahili: Boolean, onFinished: () -> Unit) {
+  com.willykez.campconnect.ui.theme.ActivityStatusBarIcons(darkIcons = false)
   val logoScale = remember { Animatable(0.6f) }
   val logoAlpha = remember { Animatable(0f) }
   val textAlpha = remember { Animatable(0f) }

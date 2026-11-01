@@ -101,6 +101,10 @@ class RemoteAdmin(
     return try { client.download(bucket, path, t) ?: refresh()?.let { client.download(bucket, path, it) } } catch (e: Exception) { null }
   }
 
+  /** Calls any deployed Edge Function with the signed-in person's token (refreshing it once if needed). */
+  suspend fun callFunction(name: String, payload: JSONObject): RemoteResult =
+    result(authed { client.invokeFunction(name, payload, it) })
+
   /** Creates a campus. The result's body is the new campus id (a JSON string). */
   suspend fun createUniversity(code: String, name: String): RemoteResult {
     val r = authed { client.rpc("platform_create_university", JSONObject().put("p_code", code).put("p_name", name), it) }

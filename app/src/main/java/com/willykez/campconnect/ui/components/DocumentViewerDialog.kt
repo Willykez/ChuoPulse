@@ -172,8 +172,9 @@ fun DocumentViewerDialog(
 
   Dialog(
     onDismissRequest = onDismiss,
-    properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+    properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)
   ) {
+    com.willykez.campconnect.ui.theme.TransparentDialogBars(lightIcons = false)
     Box(
       modifier = Modifier
         .fillMaxSize()
@@ -293,7 +294,7 @@ fun DocumentViewerDialog(
               }
             }
 
-            if (analysis != null && kind != DocumentKind.OTHER && attachment.uriString != null) {
+            if (analysis != null && DocumentKind.isAnalysable(attachment.fileName, attachment.mimeType) && attachment.uriString != null) {
               AnalysisPill(
                 analysis = analysis,
                 modifier = Modifier
@@ -339,24 +340,7 @@ fun DocumentViewerDialog(
 
 @Composable
 private fun AttachmentIcon(attachment: AttachmentFile, kind: DocumentKind, size: Dp = 36.dp) {
-  val (icon, tint, bg) = when {
-    isPdf(attachment) -> Triple(Icons.Default.PictureAsPdf, DangerRed, Color(0xFFFEE2E2))
-    kind == DocumentKind.IMAGE -> Triple(Icons.Default.Image, DeepBlue, Color(0xFFE0E7FF))
-    kind == DocumentKind.WORD -> Triple(Icons.Default.Description, Color(0xFF2563EB), Color(0xFFDBEAFE))
-    kind == DocumentKind.SLIDES -> Triple(Icons.Default.Slideshow, Color(0xFFEA580C), Color(0xFFFFEDD5))
-    kind == DocumentKind.SHEET -> Triple(Icons.Default.TableChart, Color(0xFF16A34A), Color(0xFFDCFCE7))
-    kind == DocumentKind.TEXT -> Triple(Icons.Default.Article, Color(0xFF475569), Color(0xFFE2E8F0))
-    else -> Triple(Icons.Default.InsertDriveFile, Color(0xFF64748B), Color(0xFFF1F5F9))
-  }
-  Box(
-    modifier = Modifier
-      .size(size)
-      .clip(RoundedCornerShape(8.dp))
-      .background(bg),
-    contentAlignment = Alignment.Center
-  ) {
-    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.55f))
-  }
+  FileKindBadge(kind = if (isPdf(attachment)) DocumentKind.PDF else kind, size = size)
 }
 
 // ---------- Pictures -------------------------------------------------------

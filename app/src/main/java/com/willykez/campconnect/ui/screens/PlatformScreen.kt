@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -47,6 +49,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
@@ -96,6 +99,7 @@ import com.willykez.campconnect.viewmodel.CampusViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlatformScreen(viewModel: CampusViewModel) {
+  com.willykez.campconnect.ui.theme.ActivityStatusBarIcons(darkIcons = false)
   val campuses by viewModel.campuses.collectAsState()
   LaunchedEffect(Unit) { viewModel.refreshAdminData() }
   val logs by viewModel.auditLogs.collectAsState()
@@ -106,6 +110,7 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   var managing by remember { mutableStateOf<String?>(null) }
   var quick by remember { mutableStateOf<Pair<String, Int>?>(null) } // campus id to action (1 offline, 2 edit, 3 add person)
   var tab by remember { mutableStateOf(0) }
+  var aiOpen by remember { mutableStateOf(false) }
 
   LaunchedEffect(message) {
     message?.let {
@@ -121,15 +126,16 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   Scaffold(
     snackbarHost = { SnackbarHost(snackbar) },
     containerColor = MaterialTheme.colorScheme.background,
-    modifier = Modifier.systemBarsPadding().testTag("platform_screen")
+    modifier = Modifier.testTag("platform_screen")
   ) { padding ->
-    Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+    Column(modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding()) {
       // Header
       Box(
         modifier = Modifier
           .fillMaxWidth()
           .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
           .background(Brush.verticalGradient(listOf(DeepBlueDark, DeepBlue)))
+          .statusBarsPadding()
           .padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 20.dp)
       ) {
         Column {
@@ -148,6 +154,9 @@ fun PlatformScreen(viewModel: CampusViewModel) {
                 viewModel.t("Control center for every campus", "Kituo cha kudhibiti kila chuo"),
                 style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f)
               )
+            }
+            IconButton(onClick = { aiOpen = true }, modifier = Modifier.testTag("platform_ai_settings")) {
+              Icon(Icons.Default.AutoAwesome, contentDescription = viewModel.t("AI settings", "Mipangilio ya AI"), tint = Color.White)
             }
             IconButton(onClick = { viewModel.signOut() }, modifier = Modifier.testTag("platform_sign_out")) {
               Icon(Icons.Filled.Logout, contentDescription = viewModel.t("Sign out", "Toka"), tint = Color.White)
@@ -253,6 +262,7 @@ fun PlatformScreen(viewModel: CampusViewModel) {
     }
   }
 
+  if (aiOpen) AiSettingsSheet(viewModel) { aiOpen = false }
   if (creating) CreateCampusSheet(viewModel = viewModel, onDismiss = { creating = false })
   managing?.let { id ->
     campuses.firstOrNull { it.university.id == id }?.let { campus ->
@@ -449,6 +459,7 @@ private fun ManageCampusSheet(campus: CampusSummary, viewModel: CampusViewModel,
     1 -> MaintenanceSheet(viewModel, campus.university) { action = 0 }
     2 -> EditCampusDetailsSheet(viewModel, campus.university, canRename = true) { action = 0 }
     3 -> AddCampusUserSheet(viewModel, campus.university.id, allowAdmin = true) { action = 0 }
+    4 -> CampusAdminsSheet(viewModel, campus.university.id, campus.university.shortName, campus.university.name) { action = 0 }
   }
 
   val choices = listOf(
@@ -477,6 +488,7 @@ private fun ManageCampusSheet(campus: CampusSummary, viewModel: CampusViewModel,
     listOf(
       Triple(if (campus.university.underMaintenance) viewModel.t("Offline mode: ON (tap to change)", "Nje ya mtandao: IMEWASHWA (gusa kubadilisha)") else viewModel.t("Put campus offline for maintenance", "Weka chuo nje ya mtandao kwa matengenezo"), "manage_maintenance", 1),
       Triple(viewModel.t("Edit campus details", "Hariri taarifa za chuo"), "manage_edit_details", 2),
+      Triple(viewModel.t("Administrators: reset password, login, role, pause", "Wasimamizi: nenosiri, kuingia, jukumu, kusimamisha"), "manage_admins", 4),
       Triple(viewModel.t("Add a person (admin, lecturer, student)", "Ongeza mtu (msimamizi, mhadhiri, mwanafunzi)"), "manage_add_user", 3)
     ).forEach { (label, tag, which) ->
       Text(

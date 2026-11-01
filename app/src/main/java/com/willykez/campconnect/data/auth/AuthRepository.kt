@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.security.MessageDigest
+import android.util.Base64
 import java.util.UUID
 
 object AuthConfig {
@@ -141,7 +142,8 @@ class AuthRepository(
     val access: String,
     val refresh: String?,
     val profile: UserProfile,
-    val factorId: String
+    val factorId: String,
+    val row: JSONObject? = null
   )
 
   private var liveAccess: String? = null
@@ -250,6 +252,7 @@ class AuthRepository(
     val access = j.optString("access_token").ifBlank { return null }
     liveAccess = access
     liveRefresh = j.text("refresh_token") ?: refresh
+    persistSession()
     return access
   }
 
@@ -477,12 +480,12 @@ class AuthRepository(
 
     // Administrators finish a second step (authenticator app) because the database asks for it.
     if (profile.role == Role.ADMIN && profile.status == AccountStatus.APPROVED) {
-      return beginMfa(access, refresh, profile)
+      return beginMfa(access, refresh, profile, row)
     }
-    return startLiveSession(access, refresh, profile)
+    return startLiveSession(access, refresh, profile, row)
   }
 
-  private suspend fun beginMfa(access: String, refresh: String?, profile: UserProfile): AuthOutcome {
+  private suspend fun beginMfa(access: String, refresh: String?, profile: UserProfile, row: JSONObject? = null): AuthOutcome {
     return try {
       val me = Backend.client.getUser(access)
       var factorId: String? = null
@@ -494,14 +497,14 @@ class AuthRepository(
         }
       }
       if (factorId != null) {
-        pendingMfa = LivePending(access, refresh, profile, factorId)
+        pendingMfa = LivePending(access, refresh, profile, factorId, row)
         AuthOutcome.NeedMfa(enrolling = false, secret = null, uri = null)
       } else {
         val e = Backend.client.mfaEnroll(access, "ChuoPulse " + System.currentTimeMillis())
         if (!e.isSuccessful) return AuthOutcome.Failure(AuthError.NETWORK)
         val o = safeJson(e)
         val totp = o.optJSONObject("totp")
-        pendingMfa = LivePending(access, refresh, profile, o.getString("id"))
+        pendingMfa = LivePending(access, refresh, profile, o.getString("id"), row)
         AuthOutcome.NeedMfa(enrolling = true, secret = totp?.text("secret"), uri = totp?.text("uri"))
       }
     } catch (e: Exception) {
@@ -518,19 +521,87 @@ class AuthRepository(
       val v = Backend.client.mfaVerify(p.access, p.factorId, safeJson(ch).getString("id"), code)
       if (!v.isSuccessful) return AuthOutcome.Failure(AuthError.CODE_WRONG)
       val j = safeJson(v)
-      startLiveSession(j.optString("access_token").ifBlank { p.access }, j.text("refresh_token") ?: p.refresh, p.profile)
+      startLiveSession(j.optString("access_token").ifBlank { p.access }, j.text("refresh_token") ?: p.refresh, p.profile, p.row)
     } catch (e: Exception) {
       AuthOutcome.Failure(AuthError.NETWORK)
     }
   }
 
-  private fun startLiveSession(access: String, refresh: String?, profile: UserProfile): AuthOutcome {
+  private fun startLiveSession(access: String, refresh: String?, profile: UserProfile, row: JSONObject? = null): AuthOutcome {
     liveAccess = access
     liveRefresh = refresh
     pendingMfa = null
     putAccount(Account(profile = profile, salt = "live", passwordHash = "", emailVerified = true))
     _session.value = Session(userId = profile.id, deviceId = thisDeviceId)
+    if (row != null) lastProfileRow = row
+    persistSession()
     return AuthOutcome.Success(profile.id)
+  }
+
+  // ---------- Staying signed in ----------
+
+  private var lastProfileRow: JSONObject? = null
+
+  /** Writes the current tokens to the phone so the next app start needs no password. */
+  private fun persistSession() {
+    val ctx = Backend.appContext ?: return
+    val id = _session.value?.userId ?: return
+    val access = liveAccess ?: return
+    val refresh = liveRefresh ?: return
+    val row = lastProfileRow ?: return
+    SessionStore.save(ctx, SavedSession(id, access, refresh, row.toString()))
+  }
+
+  /** Reads the `aal` claim of an access token ("aal2" once the administrator's second step is done). */
+  private fun aalOf(accessToken: String): String = runCatching {
+    val payload = accessToken.split('.')[1]
+    val raw = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+    JSONObject(String(raw, Charsets.UTF_8)).optString("aal")
+  }.getOrDefault("")
+
+  /**
+   * Brings the saved sign-in back when the app starts. True when the person is signed in again.
+   * - Server says the sign-in is no longer valid (signed out elsewhere, account removed): forget it.
+   * - No network: start from the saved profile; every request refreshes the token as needed.
+   */
+  suspend fun restoreSession(): Boolean {
+    val ctx = Backend.appContext ?: return false
+    if (!Backend.live) return false
+    val saved = SessionStore.load(ctx) ?: return false
+    val row = runCatching { JSONObject(saved.profileJson) }.getOrNull() ?: run { SessionStore.clear(ctx); return false }
+
+    val rr = try { Backend.client.refresh(saved.refreshToken) } catch (e: Exception) { null }
+    var access = saved.accessToken
+    var refresh = saved.refreshToken
+    var freshRow = row
+    if (rr != null) {
+      if (rr.isSuccessful) {
+        val j = safeJson(rr)
+        access = j.optString("access_token").ifBlank { access }
+        refresh = j.text("refresh_token") ?: refresh
+        if (uniAppIdByUuid.isEmpty()) loadDirectory()
+        val pr = runCatching { Backend.client.getProfile(access, saved.userId) }.getOrNull()
+        val newRow = pr?.takeIf { it.isSuccessful }?.let { runCatching { it.jsonArray().optJSONObject(0) }.getOrNull() }
+        if (newRow != null) freshRow = newRow
+        else if (pr != null && pr.code in 400..499) { SessionStore.clear(ctx); return false }
+      } else if (rr.code in 400..499) {
+        SessionStore.clear(ctx)
+        return false
+      }
+      // 5xx: the server is struggling, keep the saved sign-in and start from the saved profile.
+    }
+    if (uniAppIdByUuid.isEmpty()) runCatching { loadDirectory() }
+    val profile = profileFrom(freshRow)
+    if (profile.status == AccountStatus.REJECTED) { SessionStore.clear(ctx); return false }
+    // An administrator's session must carry the second step. If it does not, ask for it at sign-in.
+    if (profile.role == Role.ADMIN && profile.status == AccountStatus.APPROVED &&
+      rr != null && rr.isSuccessful && aalOf(access) != "aal2"
+    ) {
+      SessionStore.clear(ctx)
+      return false
+    }
+    startLiveSession(access, refresh, profile, freshRow)
+    return true
   }
 
   /** Re-reads the signed-in person's profile (for example to see that the registry approved them). */
@@ -546,11 +617,14 @@ class AuthRepository(
       access = j.optString("access_token").ifBlank { return false }
       liveAccess = access
       liveRefresh = j.text("refresh_token") ?: refresh
+      persistSession()
       r = runCatching { Backend.client.getProfile(access, id) }.getOrNull() ?: return false
     }
     if (!r.isSuccessful) return false
     val row = runCatching { r.jsonArray().optJSONObject(0) }.getOrNull() ?: return false
     putAccount(Account(profile = profileFrom(row), salt = "live", passwordHash = "", emailVerified = true))
+    lastProfileRow = row
+    persistSession()
     return true
   }
 
@@ -560,6 +634,8 @@ class AuthRepository(
     liveAccess = null
     liveRefresh = null
     pendingMfa = null
+    lastProfileRow = null
+    Backend.appContext?.let { SessionStore.clear(it) }
     if (token != null) runCatching { Backend.client.signOut(token) }
   }
 
@@ -568,6 +644,7 @@ class AuthRepository(
   fun signOut() {
     val s = _session.value
     if (s != null) removeDevice(s.userId, thisDeviceId)
+    Backend.appContext?.let { SessionStore.clear(it) }
     _session.value = null
   }
 

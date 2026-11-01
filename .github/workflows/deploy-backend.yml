@@ -1,0 +1,58 @@
+name: Deploy backend (database, functions, AI key)
+
+# Run by hand from the Actions tab. Needs these repository secrets:
+#   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD   (to deploy)
+#   AI_API_KEY    (optional) the AI provider key. Leave it out if the app manager saves the key
+#                 on the AI settings screen inside the app instead (that key is kept in the database).
+#   AI_PROVIDER   (optional) gemini (default) or anthropic
+#   AI_MODEL      (optional) e.g. gemini-2.5-flash
+on:
+  workflow_dispatch:
+    inputs:
+      push_database:
+        description: Apply the SQL migrations
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_ID"
+
+      - name: Apply migrations
+        if: ${{ inputs.push_database }}
+        run: supabase db push
+
+      - name: Set AI secrets (only the ones that exist)
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: |
+          args=""
+          [ -n "$AI_API_KEY" ]  && args="$args AI_API_KEY=$AI_API_KEY"
+          [ -n "$AI_PROVIDER" ] && args="$args AI_PROVIDER=$AI_PROVIDER"
+          [ -n "$AI_MODEL" ]    && args="$args AI_MODEL=$AI_MODEL"
+          if [ -n "$args" ]; then supabase secrets set $args; else echo "No AI secrets set; the key is expected on the AI settings screen."; fi
+
+      - name: Deploy Edge Functions
+        run: |
+          supabase functions deploy admin-create-user
+          supabase functions deploy admin-manage-user
+          supabase functions deploy campus-wipe-files
+          supabase functions deploy ai-analyze

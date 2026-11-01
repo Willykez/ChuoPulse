@@ -40,3 +40,15 @@ Push a tag such as `v1.0.1` to build and publish a signed APK and AAB.
 The server enforces university membership, account approval, course enrolment, programme audience and
 role through row-level security on every query. The app only filters for convenience.
 Never put the service-role key, database password or access token in the app, in `.env` or in Git.
+
+## New in this version
+
+* **Stays signed in** until Sign out (tokens kept encrypted with the Android Keystore).
+* **Double Back to exit**; Back inside a sheet with the keyboard open only closes the keyboard.
+* **People management** (campus administrators: Admin -> People): students per programme, class representatives chosen from
+  their programme, lecturers, admins; edit, change role, reset password, change login, pause/resume, delete.
+  **App manager** (campus -> Manage -> Administrators): reset passwords, edit logins, change role, pause/resume admins.
+* **Real AI** document analysis through the `ai-analyze` Edge Function (Gemini or Claude). See `.env.example`.
+
+Deploy: run `supabase/migrations/20261104000000_admin_people_and_ai.sql`, then deploy the functions
+`admin-manage-user` and `ai-analyze` (or run the **Deploy backend** workflow).

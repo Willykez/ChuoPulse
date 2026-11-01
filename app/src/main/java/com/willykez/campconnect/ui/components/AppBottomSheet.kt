@@ -38,6 +38,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.platform.LocalFocusManager
@@ -71,7 +82,7 @@ import com.willykez.campconnect.ui.theme.DeepBlue
 fun AppBottomSheet(
   onDismissRequest: () -> Unit,
   modifier: Modifier = Modifier,
-  sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+  sheetState: SheetState? = null,
   title: String? = null,
   subtitle: String? = null,
   titleColor: Color = Color.Unspecified,
@@ -80,10 +91,21 @@ fun AppBottomSheet(
   footer: (@Composable RowScope.() -> Unit)? = null,
   content: @Composable ColumnScope.() -> Unit
 ) {
-  // Back is handled by the sheet itself (it closes). The keyboard guard below runs first.
+  // The sheet only closes when the person closes it (✕, scrim, drag, or Back with the keyboard
+  // already gone). Anything that happens because the KEYBOARD closed (its hide arrow, Back that
+  // the keyboard used up, the layout resizing) is ignored, and a sheet that already slid away is
+  // brought straight back.
+  val guard = rememberKeyboardGuard()
+  val state = sheetState ?: rememberGuardedSheetState(skipPartiallyExpanded = true, guard = guard)
+  val scope = rememberCoroutineScope()
+  val safeDismiss: () -> Unit = {
+    if (guard.blocking()) {
+      scope.launch { runCatching { state.show() } }
+    } else onDismissRequest()
+  }
   ModalBottomSheet(
-    onDismissRequest = onDismissRequest,
-    sheetState = sheetState,
+    onDismissRequest = safeDismiss,
+    sheetState = state,
     shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     containerColor = MaterialTheme.colorScheme.surface,
     dragHandle = {
@@ -97,7 +119,7 @@ fun AppBottomSheet(
     },
     modifier = modifier
   ) {
-    KeyboardBackGuard()
+    KeyboardBackGuard(guard)
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
       Column(
         modifier = Modifier
@@ -254,17 +276,65 @@ fun ConfirmSheet(
 
 
 /**
- * While the keyboard is open, Back (or the keyboard's own hide arrow) only closes the keyboard.
- * Without this, the sheet received that Back press and closed with it. Once the keyboard is gone,
- * Back closes the sheet as usual. Placed inside the sheet so it sees the sheet window's keyboard state.
+ * Knows whether the keyboard is open or has only just closed. Measured on the sheet's own window
+ * (so it is right inside a dialog window too), not from Compose insets, which a dialog window does
+ * not always receive.
  */
+class KeyboardGuard internal constructor() {
+  var open by mutableStateOf(false)
+    internal set
+  internal var closedAt: Long = 0L
+
+  /** True while the keyboard is open, or for a moment after it closed. */
+  fun blocking(): Boolean = open || (System.currentTimeMillis() - closedAt) < GRACE_MS
+
+  internal fun update(nowOpen: Boolean) {
+    if (open && !nowOpen) closedAt = System.currentTimeMillis()
+    open = nowOpen
+  }
+
+  private companion object { const val GRACE_MS = 600L }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KeyboardBackGuard() {
-  val keyboardOpen = WindowInsets.isImeVisible
+fun rememberKeyboardGuard(): KeyboardGuard {
+  val view = LocalView.current
+  val guard = remember { KeyboardGuard() }
+  val composeIme = WindowInsets.isImeVisible
+  // Poll the window itself. Setting an insets listener on this view would replace Compose's own
+  // and break imePadding, so reading is the safe way.
+  LaunchedEffect(view, composeIme) {
+    while (true) {
+      val visible = composeIme ||
+        ViewCompat.getRootWindowInsets(view)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+      guard.update(visible)
+      kotlinx.coroutines.delay(30)
+    }
+  }
+  return guard
+}
+
+/** A sheet state that refuses to hide because of the keyboard closing. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun rememberGuardedSheetState(
+  skipPartiallyExpanded: Boolean = true,
+  guard: KeyboardGuard = rememberKeyboardGuard()
+): SheetState = rememberModalBottomSheetState(
+  skipPartiallyExpanded = skipPartiallyExpanded,
+  confirmValueChange = { target -> !(target == SheetValue.Hidden && guard.blocking()) }
+)
+
+/**
+ * While the keyboard is open (or just closed), Back only closes the keyboard and never the sheet.
+ * Once the keyboard is gone, Back closes the sheet as usual.
+ */
+@Composable
+private fun KeyboardBackGuard(guard: KeyboardGuard) {
   val keyboard = LocalSoftwareKeyboardController.current
   val focus = LocalFocusManager.current
-  BackHandler(enabled = keyboardOpen) {
+  BackHandler(enabled = guard.open || guard.blocking()) {
     keyboard?.hide()
     focus.clearFocus()
   }

@@ -146,8 +146,16 @@ class CampusViewModel(
 
   fun checkPassword(password: String, email: String): PasswordCheck = repository.auth.checkPassword(password, email)
 
+  /** True while the app is checking whether the person is still signed in from last time. */
+  private val _restoring = MutableStateFlow(true)
+  val restoring: StateFlow<Boolean> = _restoring.asStateFlow()
+
   init {
     repository.onCloudMessage = { text -> showMessage(text) }
+    // Stay signed in: bring back the saved sign-in before showing any sign-in screen.
+    viewModelScope.launch {
+      try { repository.auth.restoreSession() } finally { _restoring.value = false }
+    }
     refreshDirectory()
     // Whenever someone signs in (or their role changes), load what their role manages from the server.
     viewModelScope.launch {
@@ -217,6 +225,7 @@ class CampusViewModel(
   }
 
   private fun resetNavigation() {
+    repository.peopleAdmin.clear()
     _currentTab.value = ScreenTab.HOME
     _selectedDay.value = todayDay()
     _isWeekView.value = false
@@ -780,6 +789,85 @@ class CampusViewModel(
     repository.requestDataDeletion()
     showMessage(t("Request sent to the Academic Registry.", "Ombi limetumwa kwa Msajili wa Taaluma."))
   }
+
+  // ---------- People management (administrators) and AI settings (app manager) ----------
+
+  private val people_ = repository.peopleAdmin
+  val managedPeople = people_.people
+  val managedProgrammes = people_.programmes
+  val managedAdmins = people_.admins
+  val aiStatus = people_.ai
+
+  /** Reloads the campus people and programmes (campus administrator). */
+  fun refreshPeople() {
+    viewModelScope.launch {
+      val me = repository.currentUser.value
+      if (me.role != Role.ADMIN || me.isPlatformAdmin) return@launch
+      people_.loadProgrammes(repository.auth.universityUuid(me.universityId))
+      people_.loadPeople()
+    }
+  }
+
+  /** Reloads the administrators of every campus (app manager). */
+  fun refreshPlatformAdmins() {
+    viewModelScope.launch { people_.loadAdmins() }
+  }
+
+  fun refreshAiStatus() {
+    viewModelScope.launch { people_.loadAiStatus() }
+  }
+
+  fun peopleErrorText(code: String): String = when (code) {
+    "number_taken" -> t("That registration or staff number is already used on this campus.", "Namba hiyo tayari inatumika katika chuo hiki.")
+    "email_taken" -> t("That email already belongs to another account.", "Barua pepe hiyo tayari ina akaunti nyingine.")
+    "weak_password" -> t("Choose a password of at least 8 characters.", "Chagua nenosiri lenye angalau herufi 8.")
+    "invalid_email" -> t("That email does not look right.", "Barua pepe hiyo haionekani sahihi.")
+    "invalid_name" -> t("Enter the full name.", "Andika jina kamili.")
+    "invalid_number" -> t("Enter the registration or staff number.", "Andika namba ya usajili au ya mfanyakazi.")
+    "programme_required" -> t("Choose a programme for the student.", "Chagua programu ya mwanafunzi.")
+    "unknown_programme" -> t("That programme is not on this campus.", "Programu hiyo haipo kwenye chuo hiki.")
+    "role_not_allowed" -> t("That role change is not allowed.", "Mabadiliko hayo ya jukumu hayaruhusiwi.")
+    "not_allowed" -> t("You are not allowed to do that.", "Huruhusiwi kufanya hivyo.")
+    "network" -> t("No connection. Nothing was changed.", "Hakuna mtandao. Hakuna kilichobadilishwa.")
+    else -> t("The server could not finish this. Try again.", "Seva imeshindwa kukamilisha. Jaribu tena.")
+  }
+
+  /** Runs one action. Returns the reason in words when it failed, or null when it worked. */
+  private suspend fun act(okText: String, call: suspend () -> com.willykez.campconnect.data.repository.PeopleResult): String? {
+    val r = call()
+    return if (r.ok) { showMessage(okText); null } else peopleErrorText(r.code)
+  }
+
+  suspend fun editPerson(id: String, name: String, number: String, programmeId: String?, department: String?): String? =
+    act(t("Details saved.", "Taarifa zimehifadhiwa.")) { people_.updatePerson(id, name, number, programmeId, department) }
+
+  suspend fun changePersonRole(id: String, role: String, number: String?, programmeId: String?): String? =
+    act(t("Role changed.", "Jukumu limebadilishwa.")) { people_.changeRole(id, role, number, programmeId) }
+
+  suspend fun resetPersonPassword(id: String, password: String): String? =
+    act(t("Password reset. Share it with the person privately.", "Nenosiri limewekwa upya. Mpe mhusika kwa siri.")) { people_.resetPassword(id, password) }
+
+  suspend fun changePersonLogin(id: String, email: String): String? =
+    act(t("Login email changed.", "Barua pepe ya kuingia imebadilishwa.")) { people_.updateLogin(id, email) }
+
+  suspend fun pausePerson(id: String, pause: Boolean): String? =
+    act(if (pause) t("Account paused. They cannot sign in.", "Akaunti imesimamishwa. Hawezi kuingia.") else t("Account resumed.", "Akaunti imerudishwa.")) {
+      people_.setPaused(id, pause)
+    }
+
+  suspend fun deletePerson(id: String): String? =
+    act(t("Account deleted.", "Akaunti imefutwa.")) { people_.delete(id) }
+
+  suspend fun setPersonClassRep(id: String, on: Boolean): String? =
+    act(if (on) t("Class representative added.", "Mwakilishi wa darasa ameongezwa.") else t("Class representative removed.", "Mwakilishi wa darasa ameondolewa.")) {
+      people_.setClassRep(id, on)
+    }
+
+  suspend fun saveAiSettings(provider: String, model: String, key: String, enabled: Boolean): String? =
+    act(t("AI settings saved.", "Mipangilio ya AI imehifadhiwa.")) { people_.saveAi(provider, model, key, enabled) }
+
+  suspend fun removeAiKey(): String? =
+    act(t("AI key removed.", "Ufunguo wa AI umeondolewa.")) { people_.clearAiKey() }
 
   // ---------- Words used in several places ----------
 

@@ -11,6 +11,10 @@ object Backend {
   @Volatile var appContext: Context? = null
     private set
 
+  /** The signed-in person's token, for features that live outside the repository (the AI analyser). */
+  @Volatile var tokenSource: (() -> String?)? = null
+  @Volatile var tokenRefresh: (suspend () -> String?)? = null
+
   fun init(context: Context) {
     appContext = context.applicationContext
   }

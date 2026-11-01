@@ -105,7 +105,7 @@ fun AdminScreen(
         onClick = { selectedTab = 0 },
         text = {
           Text(
-            text = "Approvals (${pendingUsers.size})",
+            text = viewModel.t("Requests", "Maombi") + " (${pendingUsers.size})",
             fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal
           )
         }
@@ -115,7 +115,7 @@ fun AdminScreen(
         onClick = { selectedTab = 1 },
         text = {
           Text(
-            text = "Audit Log",
+            text = viewModel.t("Log", "Kumbukumbu"),
             fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
           )
         }
@@ -128,6 +128,17 @@ fun AdminScreen(
           Text(
             text = viewModel.t("Campus", "Chuo"),
             fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal
+          )
+        }
+      )
+      Tab(
+        selected = selectedTab == 3,
+        onClick = { selectedTab = 3 },
+        modifier = Modifier.testTag("admin_tab_people"),
+        text = {
+          Text(
+            text = viewModel.t("People", "Watu"),
+            fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal
           )
         }
       )
@@ -276,6 +287,8 @@ fun AdminScreen(
           }
         }
       }
+    } else if (selectedTab == 3) {
+      PeopleManagementTab(viewModel = viewModel, modifier = Modifier.weight(1f))
     } else if (selectedTab == 2) {
       val myCampus by viewModel.myCampus.collectAsState()
       var adminSheet by remember { mutableStateOf(0) }

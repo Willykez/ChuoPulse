@@ -132,12 +132,16 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
   private suspend fun analyse(entity: ProcessedDocumentEntity, file: File): ProcessedDocumentEntity {
     val extracted = DocumentTextExtractor.extract(file, entity.fileName, entity.mimeType)
     val result = DocumentAnalyzer.analyse(extracted.text)
+    // Real AI first; the on-device analysis is the fallback (offline, no key set, daily limit reached).
+    val ai = (AiAnalysisClient.analyse(extracted.text, entity.fileName, entity.courseCode) as? AiAnalysisClient.Outcome.Success)?.result
     val partial = extracted.pageCount > extracted.pagesRead
+    val baseTags = entity.tags.split(",").map { it.trim() }.filter { it.isNotBlank() && it != "ai" }
     return entity.copy(
-      extractedSummary = result.summary + if (partial) "\n\n(Only the first ${extracted.pagesRead} of ${extracted.pageCount} pages were read.)" else "",
-      keyTopics = result.keyTopics.joinToString(", "),
-      learningObjectives = result.objectives.joinToString("\n"),
-      studyTips = result.studyTips.joinToString("\n"),
+      tags = (baseTags + if (ai != null) listOf("ai") else emptyList()).joinToString(", "),
+      extractedSummary = (ai?.summary ?: result.summary) + if (partial) "\n\n(Only the first ${extracted.pagesRead} of ${extracted.pageCount} pages were read.)" else "",
+      keyTopics = (ai?.topics?.takeIf { it.isNotEmpty() } ?: result.keyTopics).joinToString(", "),
+      learningObjectives = (ai?.objectives?.takeIf { it.isNotEmpty() } ?: result.objectives).joinToString("\n"),
+      studyTips = (ai?.tips?.takeIf { it.isNotEmpty() } ?: result.studyTips).joinToString("\n"),
       wordCount = result.wordCount,
       pageCount = extracted.pageCount,
       readingTimeMinutes = result.readingMinutes,

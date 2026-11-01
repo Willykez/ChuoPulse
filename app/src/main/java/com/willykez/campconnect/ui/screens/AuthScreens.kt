@@ -108,6 +108,7 @@ private val FieldShape = RoundedCornerShape(14.dp)
 /** Shown to anyone who has not signed in. One calm column, one primary action per page. */
 @Composable
 fun AuthGate(viewModel: CampusViewModel) {
+  com.willykez.campconnect.ui.theme.ActivityStatusBarIcons(darkIcons = false)
   val language by viewModel.appLanguage.collectAsState()
 
   var page by remember { mutableStateOf(AuthPage.SIGN_IN) }

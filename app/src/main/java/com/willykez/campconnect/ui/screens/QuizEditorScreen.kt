@@ -132,6 +132,7 @@ fun QuizEditorScreen(viewModel: CampusViewModel, onDismiss: () -> Unit) {
     onDismissRequest = onDismiss,
     properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
   ) {
+    com.willykez.campconnect.ui.theme.TransparentDialogBars(lightIcons = !androidx.compose.foundation.isSystemInDarkTheme())
     BackHandler(onBack = onDismiss)
     Surface(modifier = Modifier.fillMaxSize().testTag("quiz_editor_screen"), color = DeepBlue.copy(alpha = 0.05f).compositeOver(MaterialTheme.colorScheme.background)) {
       Column(Modifier.fillMaxSize()) {

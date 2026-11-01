@@ -8,6 +8,7 @@ enum class DocumentKind(val label: String) {
   SLIDES("Presentation"),
   SHEET("Spreadsheet"),
   TEXT("Text file"),
+  ARCHIVE("Archive"),
   OTHER("File");
 
   companion object {
@@ -25,6 +26,8 @@ enum class DocumentKind(val label: String) {
       "application/vnd.oasis.opendocument.presentation",
       "application/vnd.oasis.opendocument.spreadsheet",
       "application/rtf",
+      "application/zip",
+      "application/x-zip-compressed",
       "text/*"
     )
 
@@ -36,7 +39,8 @@ enum class DocumentKind(val label: String) {
     fun of(fileName: String, mimeType: String? = null): DocumentKind {
       when (extensionOf(fileName)) {
         "pdf" -> return PDF
-        "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif" -> return IMAGE
+        "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "jfif" -> return IMAGE
+        "zip", "rar", "7z", "tar", "gz" -> return ARCHIVE
         "docx", "doc", "odt", "rtf" -> return WORD
         "pptx", "ppt", "odp" -> return SLIDES
         "xlsx", "xls", "ods", "csv", "tsv" -> return SHEET
@@ -50,11 +54,12 @@ enum class DocumentKind(val label: String) {
         "presentation" in m || "powerpoint" in m -> SLIDES
         "spreadsheet" in m || "excel" in m -> SHEET
         m.startsWith("text/") -> TEXT
+        "zip" in m || "compressed" in m -> ARCHIVE
         else -> OTHER
       }
     }
 
     fun isAnalysable(fileName: String, mimeType: String? = null): Boolean =
-      of(fileName, mimeType) != OTHER
+      of(fileName, mimeType).let { it != OTHER && it != ARCHIVE }
   }
 }

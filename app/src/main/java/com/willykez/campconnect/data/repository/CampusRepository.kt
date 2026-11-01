@@ -1568,6 +1568,16 @@ class CampusRepository {
 
   private val remote = RemoteAdmin(token = { auth.accessToken }, refresh = { auth.refreshAccessToken() })
 
+  /** People management for administrators and the app manager, and the AI settings. */
+  val peopleAdmin = PeopleAdmin(remote)
+
+  @Suppress("unused")
+  private val tokensWired = run {
+    Backend.tokenSource = { auth.accessToken }
+    Backend.tokenRefresh = { auth.refreshAccessToken() }
+    true
+  }
+
   // ---------- Cloud sync: the server is the truth; this phone keeps a copy ----------
 
   private val cloud = CloudSync(remote)

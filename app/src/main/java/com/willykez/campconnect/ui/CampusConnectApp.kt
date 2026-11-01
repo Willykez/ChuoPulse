@@ -136,10 +136,30 @@ fun CampusConnectApp(
   val paused by viewModel.campusPaused.collectAsState()
   val swahili by viewModel.appLanguage.collectAsState()
   var splashDone by rememberSaveable { mutableStateOf(false) }
+  val restoring by viewModel.restoring.collectAsState()
+
+  // Back at the very top of the app: the first press asks, a second press within two seconds exits.
+  // Screens, tabs, sheets and dialogs register their own Back handling after this one, so they win;
+  // this one only runs when nothing else needs Back.
+  val rootContext = LocalContext.current
+  var lastBackAt by remember { mutableStateOf(0L) }
+  BackHandler(enabled = splashDone && !restoring) {
+    val now = System.currentTimeMillis()
+    if (now - lastBackAt < 2000L) {
+      (rootContext as? android.app.Activity)?.finish()
+    } else {
+      lastBackAt = now
+      Toast.makeText(
+        rootContext,
+        viewModel.t("Press back again to exit", "Bonyeza tena kurudi nyuma ili kutoka"),
+        Toast.LENGTH_SHORT
+      ).show()
+    }
+  }
 
   CampusConnectTheme {
     when {
-      !splashDone -> SplashScreen(
+      !splashDone || restoring -> SplashScreen(
         swahili = swahili == com.willykez.campconnect.data.model.AppLanguage.SWAHILI,
         onFinished = { splashDone = true }
       )

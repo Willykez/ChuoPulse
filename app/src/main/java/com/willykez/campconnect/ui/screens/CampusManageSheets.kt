@@ -56,7 +56,7 @@ fun EditCampusDetailsSheet(viewModel: CampusViewModel, campus: University, canRe
             busy = true
             error = viewModel.updateCampusDetails(campus.id, if (canRename) name else null, location, email, phone)
             busy = false
-            if (error == null) onDismiss()
+            if (error == null) { viewModel.refreshPeople(); viewModel.refreshPlatformAdmins(); onDismiss() }
           }
         },
         enabled = !busy,
@@ -85,17 +85,20 @@ fun EditCampusDetailsSheet(viewModel: CampusViewModel, campus: University, canRe
 
 /** Add an approved student, lecturer or administrator straight into a campus. */
 @Composable
-fun AddCampusUserSheet(viewModel: CampusViewModel, universityId: String, allowAdmin: Boolean, onDismiss: () -> Unit) {
-  var role by remember { mutableStateOf(Role.LECTURER) }
+fun AddCampusUserSheet(
+  viewModel: CampusViewModel, universityId: String, allowAdmin: Boolean, onDismiss: () -> Unit,
+  initialRole: Role? = null, initialProgramme: String? = null, onlyRole: Boolean = false
+) {
+  var role by remember { mutableStateOf(initialRole ?: Role.LECTURER) }
   var name by remember { mutableStateOf("") }
   var email by remember { mutableStateOf("") }
   var number by remember { mutableStateOf("") }
-  var programme by remember { mutableStateOf("") }
+  var programme by remember { mutableStateOf(initialProgramme.orEmpty()) }
   var password by remember { mutableStateOf("") }
   var error by remember { mutableStateOf<String?>(null) }
   var busy by remember { mutableStateOf(false) }
   val scope = androidx.compose.runtime.rememberCoroutineScope()
-  val roles = if (allowAdmin) listOf(Role.STUDENT, Role.LECTURER, Role.ADMIN) else listOf(Role.STUDENT, Role.LECTURER)
+  val roles = if (onlyRole && initialRole != null) listOf(initialRole) else if (allowAdmin) listOf(Role.STUDENT, Role.LECTURER, Role.ADMIN) else listOf(Role.STUDENT, Role.LECTURER)
   val programmes = remember(universityId) { viewModel.programmesFor(universityId) }
   val ready = name.isNotBlank() && email.isNotBlank() && number.isNotBlank() && password.isNotBlank() &&
     (role != Role.STUDENT || programme.isNotBlank())
@@ -112,7 +115,7 @@ fun AddCampusUserSheet(viewModel: CampusViewModel, universityId: String, allowAd
             busy = true
             error = viewModel.addCampusUser(universityId, role, name, email, number, programme.ifBlank { null }, password)
             busy = false
-            if (error == null) onDismiss()
+            if (error == null) { viewModel.refreshPeople(); viewModel.refreshPlatformAdmins(); onDismiss() }
           }
         },
         enabled = ready && !busy,

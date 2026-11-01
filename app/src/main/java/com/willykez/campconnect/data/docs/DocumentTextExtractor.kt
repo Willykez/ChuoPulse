@@ -52,9 +52,7 @@ object DocumentTextExtractor {
       val ext = DocumentKind.extensionOf(fileName)
       val kind = DocumentKind.of(fileName, mimeType)
       val raw = when {
-        ext in DocumentKind.legacyOffice -> throw ExtractionException(
-          "Old .$ext files can't be read. Save it as .${ext}x or as a PDF and add it again."
-        )
+        ext in DocumentKind.legacyOffice -> legacyOffice(file, ext)
         kind == DocumentKind.PDF -> pdf(file)
         kind == DocumentKind.IMAGE -> image(file)
         ext == "docx" -> ExtractedDocument(listOf(zipText(file, "word/document.xml", "w:p")), 1)
@@ -64,7 +62,9 @@ object DocumentTextExtractor {
         ext == "odp" -> odp(file)
         ext == "rtf" -> single(rtf(readTextFile(file)))
         ext == "html" || ext == "htm" -> single(html(readTextFile(file)))
-        kind == DocumentKind.TEXT || ext == "csv" || ext == "tsv" -> single(readTextFile(file))
+        ext == "csv" -> single(readTextFile(file).lines().joinToString("\n") { it.replace(Regex(""",(?=(?:[^"]*"[^"]*")*[^"]*$)"""), " │ ").replace("\"", "") })
+        ext == "tsv" -> single(readTextFile(file).replace("\t", " │ "))
+        kind == DocumentKind.TEXT -> single(readTextFile(file))
         else -> throw ExtractionException(
           "This file type can't be analysed. Use a PDF, photo, Word, PowerPoint, Excel or text file."
         )
@@ -102,13 +102,86 @@ object DocumentTextExtractor {
     )
   }
 
+  /** One section per worksheet, one line per row, cells separated by " │ ". */
   private fun xlsx(file: File): ExtractedDocument = openZip(file) { zip ->
-    val shared = zip.getEntry("xl/sharedStrings.xml")
-      ?: throw ExtractionException("This spreadsheet has no text cells to analyse.")
-    val xml = zip.getInputStream(shared).bufferedReader().use { it.readText() }
-    val cells = xml.split("</si>").map { xmlText(it).trim() }.filter { it.isNotBlank() }
-    val sheets = zip.entries().asSequence().count { Regex("""xl/worksheets/sheet\d+\.xml""").matches(it.name) }
-    ExtractedDocument(listOf(cells.joinToString("\n")), sheets.coerceAtLeast(1))
+    val shared = zip.getEntry("xl/sharedStrings.xml")?.let { e ->
+      val xml = zip.getInputStream(e).bufferedReader().use { it.readText() }
+      xml.split("</si>").dropLast(1).map { xmlText(it).trim() }
+    }.orEmpty()
+    val sheetEntries = zip.entries().asSequence()
+      .filter { Regex("""xl/worksheets/sheet\d+\.xml""").matches(it.name) }
+      .sortedBy { Regex("""\d+""").find(it.name.substringAfterLast('/'))!!.value.toInt() }
+      .toList()
+    if (sheetEntries.isEmpty() && shared.isEmpty()) throw ExtractionException("This spreadsheet has no cells to show.")
+    val rowRe = Regex("""<row\b[^>]*>(.*?)</row>""", RegexOption.DOT_MATCHES_ALL)
+    val cellRe = Regex("""<c\b([^>]*?)(?:/>|>(.*?)</c>)""", RegexOption.DOT_MATCHES_ALL)
+    val sheets = sheetEntries.mapIndexed { index, entry ->
+      val xml = zip.getInputStream(entry).bufferedReader().use { it.readText() }
+      val lines = ArrayList<String>()
+      for (row in rowRe.findAll(xml)) {
+        val cells = ArrayList<String>()
+        for (c in cellRe.findAll(row.groupValues[1])) {
+          val attrs = c.groupValues[1]
+          val body = c.groupValues[2]
+          val type = Regex("""\bt="([^"]*)"""").find(attrs)?.groupValues?.get(1)
+          val value = Regex("""<v>(.*?)</v>""", RegexOption.DOT_MATCHES_ALL).find(body)?.groupValues?.get(1).orEmpty()
+          cells += when (type) {
+            "s" -> shared.getOrNull(value.toIntOrNull() ?: -1).orEmpty()
+            "inlineStr" -> xmlText(body).trim()
+            else -> decode(value)
+          }
+        }
+        if (cells.any { it.isNotBlank() }) lines += cells.joinToString(" │ ").trimEnd(' ', '│')
+      }
+      ("Sheet ${index + 1}\n" + lines.joinToString("\n")).take(MAX_CHARS)
+    }.filter { it.lines().size > 1 }
+    if (sheets.isEmpty()) ExtractedDocument(listOf(shared.filter { it.isNotBlank() }.joinToString("\n")), 1)
+    else ExtractedDocument(sheets, sheets.size)
+  }
+
+  /**
+   * Old binary Word, PowerPoint and Excel files (.doc .ppt .xls). They have no simple text layer, so
+   * this reads the readable text runs inside them. It is a plain preview, good for reading and for
+   * summaries; layout and tables are lost. Newer .docx/.pptx/.xlsx files show fully.
+   */
+  private fun legacyOffice(file: File, ext: String): ExtractedDocument {
+    if (file.length() > 25L * 1024 * 1024) throw ExtractionException("This old-format file is too large to preview here. Open it in another app.")
+    val bytes = file.readBytes()
+    val out = StringBuilder()
+    // UTF-16 text (what Word and PowerPoint store for most of the words)
+    var i = 0
+    val run = StringBuilder()
+    fun flush() {
+      if (run.length >= 5) out.append(run).append('\n')
+      run.setLength(0)
+    }
+    while (i + 1 < bytes.size) {
+      val lo = bytes[i].toInt() and 0xFF
+      val hi = bytes[i + 1].toInt() and 0xFF
+      val ok = hi == 0 && (lo in 32..126 || lo == 9 || lo == 13 || lo == 10 || lo >= 160)
+      if (ok) { run.append(if (lo == 13) '\n' else lo.toChar()); i += 2 } else { flush(); i += 1 }
+    }
+    flush()
+    // 8-bit text (Excel strings, older Word)
+    if (out.length < 200) {
+      run.setLength(0)
+      for (b in bytes) {
+        val c = b.toInt() and 0xFF
+        if (c in 32..126 || c == 10 || c == 13 || c == 9) run.append(c.toChar()) else flush()
+      }
+      flush()
+    }
+    val text = out.toString().lines()
+      .map { it.trim() }
+      .filter { l -> l.length >= 5 && l.count { it.isLetter() } * 2 >= l.length }
+      .distinct()
+      .joinToString("\n")
+    if (text.length < MIN_CHARS) throw ExtractionException(
+      "This old .$ext file can't be shown here. Use Open in another app, or save it as a newer format or a PDF."
+    )
+    return ExtractedDocument(
+      listOf("Basic preview of an older .$ext file (layout is not kept).\n\n" + text.take(MAX_CHARS)), 1
+    )
   }
 
   private fun odp(file: File): ExtractedDocument = openZip(file) { zip ->

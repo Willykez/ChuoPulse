@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -30,6 +31,7 @@ fun DocumentKind.icon(): ImageVector = when (this) {
   DocumentKind.SLIDES -> Icons.Default.Slideshow
   DocumentKind.SHEET -> Icons.Default.TableChart
   DocumentKind.TEXT -> Icons.Default.Article
+  DocumentKind.ARCHIVE -> Icons.Default.FolderZip
   DocumentKind.OTHER -> Icons.Default.InsertDriveFile
 }
 
@@ -41,6 +43,7 @@ fun DocumentKind.accent(): Color = when (this) {
   DocumentKind.SLIDES -> Color(0xFFEA580C)
   DocumentKind.SHEET -> Color(0xFF16A34A)
   DocumentKind.TEXT -> Color(0xFF64748B)
+  DocumentKind.ARCHIVE -> Color(0xFF7C3AED)
   DocumentKind.OTHER -> Color(0xFF64748B)
 }
 

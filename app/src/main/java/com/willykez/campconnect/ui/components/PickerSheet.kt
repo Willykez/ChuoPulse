@@ -67,7 +67,7 @@ fun PickerSheet(
   emptyText: String = "Nothing to choose yet.",
   searchHint: String = "Search"
 ) {
-  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = options.size > 6)
+  val sheetState = rememberGuardedSheetState(skipPartiallyExpanded = options.size > 6)
   val scope = rememberCoroutineScope()
   var query by remember { mutableStateOf("") }
   val shown = remember(options, query) {

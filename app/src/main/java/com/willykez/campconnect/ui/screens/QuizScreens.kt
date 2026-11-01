@@ -379,6 +379,7 @@ private fun TakeQuizDialog(viewModel: CampusViewModel, quiz: Quiz, attempt: Quiz
     onDismissRequest = {},
     properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)
   ) {
+    com.willykez.campconnect.ui.theme.TransparentDialogBars(lightIcons = !androidx.compose.foundation.isSystemInDarkTheme())
     Surface(modifier = Modifier.fillMaxSize().testTag("take_quiz_dialog"), color = MaterialTheme.colorScheme.background) {
       if (timedOut != null) {
         FinishedPanel(viewModel, quiz, attempt, timedOut == true, onClose)
