@@ -101,6 +101,14 @@ android {
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
+
+    // The build used for testing on phones: minified and shrunk exactly like release, but signed
+    // with the temporary key so it installs without your upload key.
+    create("staging") {
+      initWith(getByName("release"))
+      signingConfig = signingConfigs.getByName("debugConfig")
+      matchingFallbacks += listOf("release")
+    }
   }
 
   packaging {
