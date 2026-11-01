@@ -391,7 +391,13 @@ class AuthRepository(
       .put("id_number", idNumber.trim())
       .put(if (isStaff) "department" else "programme", programmeOrDepartment?.trim().orEmpty())
     val r = try { Backend.client.signUp(cleanEmail, password, meta) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
-    if (r.isSuccessful) return AuthOutcome.NeedCode(CodePurpose.VERIFY_EMAIL, cleanEmail)
+    if (r.isSuccessful) {
+      // Email confirmation is switched off on the server: a session comes back straight away, so no
+      // code is needed. The person waits for an administrator to approve the account.
+      val created = safeJson(r)
+      return if (created.optString("access_token").isNotBlank()) finishLiveSignIn(created)
+      else AuthOutcome.NeedCode(CodePurpose.VERIFY_EMAIL, cleanEmail)
+    }
     val code = safeJson(r).optString("error_code")
     val msg = safeJson(r).let { it.optString("msg").ifBlank { it.optString("message") } }.lowercase()
     return AuthOutcome.Failure(
