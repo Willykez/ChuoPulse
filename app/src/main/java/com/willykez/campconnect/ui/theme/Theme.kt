@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.theme
 
+import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -7,6 +9,9 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
@@ -83,6 +88,27 @@ fun CampusConnectTheme(
     AppThemeMode.DARK -> true
   }
   val colorScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme
+
+  // The app draws behind the status and navigation bars; the bars are transparent and their icons
+  // follow the app's own light/dark choice (not only the phone's).
+  val view = LocalView.current
+  if (!view.isInEditMode) {
+    SideEffect {
+      val window = (view.context as? Activity)?.window ?: return@SideEffect
+      WindowCompat.setDecorFitsSystemWindows(window, false)
+      @Suppress("DEPRECATION")
+      window.statusBarColor = android.graphics.Color.TRANSPARENT
+      @Suppress("DEPRECATION")
+      window.navigationBarColor = android.graphics.Color.TRANSPARENT
+      if (Build.VERSION.SDK_INT >= 29) {
+        window.isStatusBarContrastEnforced = false
+        window.isNavigationBarContrastEnforced = false
+      }
+      val controller = WindowCompat.getInsetsController(window, view)
+      controller.isAppearanceLightStatusBars = !useDarkTheme
+      controller.isAppearanceLightNavigationBars = !useDarkTheme
+    }
+  }
 
   MaterialTheme(
     colorScheme = colorScheme,
