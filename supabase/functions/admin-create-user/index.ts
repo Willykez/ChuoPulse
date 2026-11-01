@@ -73,7 +73,28 @@ Deno.serve(async (req) => {
   })
   if (error) {
     const msg = (error.message ?? '').toLowerCase()
-    if (error.code === 'email_exists' || msg.includes('already')) return json(409, { error: 'email_taken' })
+    if (error.code === 'email_exists' || msg.includes('already')) {
+      // The sign-in account exists. If it has NO profile yet (made by hand in the dashboard), the app
+      // manager's request attaches the profile now and sets the password, so nothing is done by hand.
+      const { data: adopted, error: adoptError } = await admin.rpc('adopt_account', {
+        p_caller: me.user.id, p_email: email, p_university_code: code, p_full_name: fullName,
+        p_role: role, p_number: idNumber, p_programme: programme,
+      })
+      if (adoptError) {
+        const am = (adoptError.message ?? '').toLowerCase()
+        if (am.includes('number_taken')) return json(409, { error: 'number_taken' })
+        if (am.includes('not_allowed')) return json(409, { error: 'email_taken' })
+        return json(400, { error: 'create_failed', detail: adoptError.message })
+      }
+      if (adopted?.status === 'adopted') {
+        const { error: pwError } = await admin.auth.admin.updateUserById(adopted.user_id, {
+          password, email_confirm: true,
+        })
+        if (pwError) return json(400, { error: 'create_failed', detail: pwError.message })
+        return json(200, { ok: true, user_id: adopted.user_id, adopted: true })
+      }
+      return json(409, { error: 'email_taken' })
+    }
     if (msg.includes('number_taken')) return json(409, { error: 'number_taken' })
     if (msg.includes('password')) return json(400, { error: 'weak_password' })
     return json(400, { error: 'create_failed', detail: error.message })
