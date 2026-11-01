@@ -1,59 +1,62 @@
 # ====================================================================
-# Android & Jetpack Compose
+# ChuoPulse: R8 / ProGuard rules (used by the release and staging builds)
 # ====================================================================
--keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
--dontwarn androidx.compose.**
 
-# ====================================================================
-# Kotlin Coroutines
-# ====================================================================
+# ---- Smaller and harder to read; keep line numbers so crash reports still make sense ----
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+-repackageclasses ''
+-allowaccessmodification
+
+# ---- Remove debug logging from the shipped app ----
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
+
+# ---- Kotlin ----
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.**
+-dontwarn kotlinx.coroutines.**
 -keepclassmembers class * {
     @kotlinx.coroutines.InternalCoroutinesApi *;
 }
--dontwarn kotlinx.coroutines.**
 
-# ====================================================================
-# Room Database
-# ====================================================================
+# ---- Jetpack Compose ----
+-dontwarn androidx.compose.**
+
+# ---- Room ----
 -keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class *
 -dontwarn androidx.room.paging.**
 
-# ====================================================================
-# Retrofit & OkHttp
-# ====================================================================
--keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+# ---- Networking (OkHttp / Retrofit / Moshi) ----
 -keepclassmembers class * {
     @retrofit2.http.* <methods>;
 }
--dontwarn retrofit2.**
--dontwarn okhttp3.**
--dontwarn okio.**
-
-# ====================================================================
-# Moshi (JSON Serialization)
-# ====================================================================
 -keepclasseswithmembers class * {
     @com.squareup.moshi.Json <fields>;
 }
--keepclasseswithmembers class * {
-    @com.squareup.moshi.JsonClass <fields>;
-}
 -keep class * implements com.squareup.moshi.JsonAdapter
--keepclassmembers class * {
-    public static com.squareup.moshi.JsonAdapter jsonAdapter(com.squareup.moshi.Moshi, java.lang.reflect.Type, java.lang.annotation.Annotation[]);
-}
+-dontwarn retrofit2.**
+-dontwarn okhttp3.**
+-dontwarn okio.**
 -dontwarn com.squareup.moshi.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+-dontwarn org.slf4j.**
+-dontwarn javax.annotation.**
+-dontwarn com.google.errorprone.annotations.**
 
-# ====================================================================
-# Firebase & ML Kit
-# ====================================================================
+# ---- Firebase and ML Kit ----
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
 
-# ====================================================================
-# Coil Image Loading
-# ====================================================================
+# ---- Coil ----
 -keep class coil.** { *; }
 -dontwarn coil.**
