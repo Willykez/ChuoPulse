@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,6 +40,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.LocalFocusManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,7 +80,7 @@ fun AppBottomSheet(
   footer: (@Composable RowScope.() -> Unit)? = null,
   content: @Composable ColumnScope.() -> Unit
 ) {
-  BackHandler(enabled = sheetState.isVisible, onBack = onDismissRequest)
+  // Back is handled by the sheet itself (it closes). The keyboard guard below runs first.
   ModalBottomSheet(
     onDismissRequest = onDismissRequest,
     sheetState = sheetState,
@@ -92,6 +97,7 @@ fun AppBottomSheet(
     },
     modifier = modifier
   ) {
+    KeyboardBackGuard()
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
       Column(
         modifier = Modifier
@@ -243,5 +249,23 @@ fun ConfirmSheet(
       extra()
     }
     Spacer(modifier = Modifier.height(8.dp))
+  }
+}
+
+
+/**
+ * While the keyboard is open, Back (or the keyboard's own hide arrow) only closes the keyboard.
+ * Without this, the sheet received that Back press and closed with it. Once the keyboard is gone,
+ * Back closes the sheet as usual. Placed inside the sheet so it sees the sheet window's keyboard state.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeyboardBackGuard() {
+  val keyboardOpen = WindowInsets.isImeVisible
+  val keyboard = LocalSoftwareKeyboardController.current
+  val focus = LocalFocusManager.current
+  BackHandler(enabled = keyboardOpen) {
+    keyboard?.hide()
+    focus.clearFocus()
   }
 }
