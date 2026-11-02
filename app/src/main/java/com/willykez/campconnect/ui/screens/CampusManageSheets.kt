@@ -86,8 +86,9 @@ fun EditCampusDetailsSheet(viewModel: CampusViewModel, campus: University, canRe
 /** Add an approved student, lecturer or administrator straight into a campus. */
 @Composable
 fun AddCampusUserSheet(
-  viewModel: CampusViewModel, universityId: String, allowAdmin: Boolean, onDismiss: () -> Unit,
-  initialRole: Role? = null, initialProgramme: String? = null, onlyRole: Boolean = false
+  viewModel: CampusViewModel, universityId: String, allowAdmin: Boolean,
+  initialRole: Role? = null, initialProgramme: String? = null, onlyRole: Boolean = false,
+  onDismiss: () -> Unit
 ) {
   var role by remember { mutableStateOf(initialRole ?: Role.LECTURER) }
   var name by remember { mutableStateOf("") }

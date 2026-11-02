@@ -50,5 +50,5 @@ Never put the service-role key, database password or access token in the app, in
   **App manager** (campus -> Manage -> Administrators): reset passwords, edit logins, change role, pause/resume admins.
 * **Real AI** document analysis through the `ai-analyze` Edge Function (Gemini or Claude). See `.env.example`.
 
-Deploy: run `supabase/migrations/20261104000000_admin_people_and_ai.sql`, then deploy the functions
+Deploy: run `supabase/migrations/20261104000000_admin_people_and_ai.sql` and then `20261105000000_admin_messaging.sql`, then deploy the functions
 `admin-manage-user` and `ai-analyze` (or run the **Deploy backend** workflow).

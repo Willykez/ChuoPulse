@@ -73,7 +73,7 @@ fun AdminScreen(
   val pendingUsers by viewModel.pendingUsers.collectAsState()
   androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.refreshAdminData() }
   val auditLogs by viewModel.auditLogs.collectAsState()
-  var selectedTab by remember { mutableStateOf(0) }
+  var selectedTab by remember { mutableStateOf(AdminTabs.OVERVIEW) }
 
   Column(
     modifier = modifier
@@ -83,65 +83,43 @@ fun AdminScreen(
     Spacer(modifier = Modifier.height(8.dp))
 
     Text(
-      text = "Academic Registry & Admin",
+      text = viewModel.t("Campus control center", "Kituo cha kudhibiti chuo"),
       style = MaterialTheme.typography.headlineMedium,
       fontWeight = FontWeight.Bold
     )
     Text(
-      text = "Role approvals, academic audits & access control",
+      text = viewModel.t("People, approvals, messages and campus setup", "Watu, idhini, ujumbe na mpangilio wa chuo"),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     Spacer(modifier = Modifier.height(14.dp))
 
-    TabRow(
-      selectedTabIndex = selectedTab,
+    val tabOrder = listOf(AdminTabs.OVERVIEW, AdminTabs.REQUESTS, AdminTabs.PEOPLE, AdminTabs.MESSAGES, AdminTabs.CAMPUS, AdminTabs.LOG)
+    androidx.compose.material3.ScrollableTabRow(
+      selectedTabIndex = tabOrder.indexOf(selectedTab).coerceAtLeast(0),
+      edgePadding = 0.dp,
       containerColor = MaterialTheme.colorScheme.surface,
       contentColor = DeepBlue
     ) {
-      Tab(
-        selected = selectedTab == 0,
-        onClick = { selectedTab = 0 },
-        text = {
-          Text(
-            text = viewModel.t("Requests", "Maombi") + " (${pendingUsers.size})",
-            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal
-          )
+      tabOrder.forEach { id ->
+        val label = when (id) {
+          AdminTabs.OVERVIEW -> viewModel.t("Overview", "Muhtasari")
+          AdminTabs.REQUESTS -> viewModel.t("Requests", "Maombi") + if (pendingUsers.isNotEmpty()) " (${pendingUsers.size})" else ""
+          AdminTabs.PEOPLE -> viewModel.t("People", "Watu")
+          AdminTabs.MESSAGES -> viewModel.t("Messages", "Ujumbe")
+          AdminTabs.CAMPUS -> viewModel.t("Campus", "Chuo")
+          else -> viewModel.t("Log", "Kumbukumbu")
         }
-      )
-      Tab(
-        selected = selectedTab == 1,
-        onClick = { selectedTab = 1 },
-        text = {
-          Text(
-            text = viewModel.t("Log", "Kumbukumbu"),
-            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
-          )
-        }
-      )
-      Tab(
-        selected = selectedTab == 2,
-        onClick = { selectedTab = 2 },
-        modifier = Modifier.testTag("admin_tab_campus"),
-        text = {
-          Text(
-            text = viewModel.t("Campus", "Chuo"),
-            fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal
-          )
-        }
-      )
-      Tab(
-        selected = selectedTab == 3,
-        onClick = { selectedTab = 3 },
-        modifier = Modifier.testTag("admin_tab_people"),
-        text = {
-          Text(
-            text = viewModel.t("People", "Watu"),
-            fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal
-          )
-        }
-      )
+        Tab(
+          selected = selectedTab == id,
+          onClick = { selectedTab = id },
+          modifier = Modifier.testTag(
+            when (id) { AdminTabs.CAMPUS -> "admin_tab_campus"; AdminTabs.PEOPLE -> "admin_tab_people"; else -> "admin_tab_$id" }
+          ),
+          text = { Text(label, maxLines = 1, fontWeight = if (selectedTab == id) FontWeight.Bold else FontWeight.Normal) }
+        )
+      }
     }
 
     Spacer(modifier = Modifier.height(14.dp))
@@ -287,6 +265,10 @@ fun AdminScreen(
           }
         }
       }
+    } else if (selectedTab == AdminTabs.OVERVIEW) {
+      AdminOverviewTab(viewModel = viewModel, onGo = { selectedTab = it }, modifier = Modifier.weight(1f))
+    } else if (selectedTab == AdminTabs.MESSAGES) {
+      AdminMessagesTab(viewModel = viewModel, modifier = Modifier.weight(1f))
     } else if (selectedTab == 3) {
       PeopleManagementTab(viewModel = viewModel, modifier = Modifier.weight(1f))
     } else if (selectedTab == 2) {

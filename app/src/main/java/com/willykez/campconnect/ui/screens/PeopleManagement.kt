@@ -96,12 +96,15 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
   var adding by remember { mutableStateOf<Role?>(null) }
   var choosingReps by remember { mutableStateOf(false) }
   var openPerson by remember { mutableStateOf<String?>(null) }
+  var statusFilter by remember { mutableStateOf(0) } // 0 all, 1 paused, 2 pending
+  var bulk by remember { mutableStateOf<Role?>(null) }
+  val context = androidx.compose.ui.platform.LocalContext.current
 
   // Always one programme selected, so students are never shown "all in one place".
   val selected = programmeId?.takeIf { id -> programmes.any { it.id == id } } ?: programmes.firstOrNull()?.id
   val selectedName = programmes.firstOrNull { it.id == selected }?.name.orEmpty()
 
-  fun matches(p: ManagedPerson) = query.isBlank() || p.name.contains(query, true) || p.number.contains(query, true) || p.email.contains(query, true)
+  fun matches(p: ManagedPerson) = when (statusFilter) { 1 -> p.paused; 2 -> p.status == "pending"; else -> true } && (query.isBlank() || p.name.contains(query, true) || p.number.contains(query, true) || p.email.contains(query, true))
 
   val students = people.filter { it.role == "student" && it.programmeId == selected && matches(it) }
   val reps = people.filter { it.role == "student" && it.isClassRep && it.programmeId == selected && matches(it) }
@@ -158,6 +161,12 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
     }
 
     SheetField(query, { query = it }, viewModel.t("Search name, number or email", "Tafuta jina, namba au barua pepe"), "people_search")
+    Spacer(Modifier.height(6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      listOf(viewModel.t("All", "Wote"), viewModel.t("Paused", "Waliosimamishwa"), viewModel.t("Pending", "Wanasubiri")).forEachIndexed { i, label ->
+        FilterChip(selected = statusFilter == i, onClick = { statusFilter = i }, label = { Text(label) }, modifier = Modifier.testTag("people_status_$i"))
+      }
+    }
     Spacer(Modifier.height(10.dp))
 
     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -179,6 +188,19 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
       item { Spacer(Modifier.height(8.dp)) }
     }
 
+    if (tab == PeopleTab.STUDENTS || tab == PeopleTab.LECTURERS) {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        OutlinedButton(
+          onClick = { bulk = if (tab == PeopleTab.STUDENTS) Role.STUDENT else Role.LECTURER },
+          enabled = tab == PeopleTab.LECTURERS || programmes.isNotEmpty(), shape = RoundedCornerShape(12.dp),
+          modifier = Modifier.weight(1f).testTag("people_bulk")
+        ) { Text(viewModel.t("Add many", "Ongeza wengi"), maxLines = 1) }
+        OutlinedButton(
+          onClick = { exportPeopleCsv(context, me.universityId, people) },
+          shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).testTag("people_export")
+        ) { Text(viewModel.t("Export CSV", "Hamisha CSV"), maxLines = 1) }
+      }
+    }
     when (tab) {
       PeopleTab.STUDENTS -> Button(
         onClick = { adding = Role.STUDENT }, enabled = programmes.isNotEmpty(),
@@ -203,6 +225,7 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
     Spacer(Modifier.height(10.dp))
   }
 
+  bulk?.let { r -> BulkAddSheet(viewModel, me.universityId, r) { bulk = null } }
   adding?.let { r ->
     AddCampusUserSheet(
       viewModel, me.universityId, allowAdmin = false, onDismiss = { adding = null },
@@ -446,7 +469,7 @@ private fun EditPersonSheet(
   )
 }
 
-private fun generatePassword(): String {
+internal fun generatePassword(): String {
   val chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
   val r = java.security.SecureRandom()
   return (1..9).map { chars[r.nextInt(chars.length)] }.joinToString("") + "#" + (10 + r.nextInt(89))

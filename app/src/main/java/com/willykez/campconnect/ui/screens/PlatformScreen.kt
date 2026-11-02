@@ -111,8 +111,11 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   var quick by remember { mutableStateOf<Pair<String, Int>?>(null) } // campus id to action (1 offline, 2 edit, 3 add person)
   var tab by remember { mutableStateOf(0) }
   var aiOpen by remember { mutableStateOf(false) }
+  var query by remember { mutableStateOf("") }
+  var filter by remember { mutableStateOf(0) } // 0 all, 1 online, 2 offline, 3 waiting
 
-  LaunchedEffect(message) {
+  LaunchedEffect(message, managing) {
+    if (managing != null) return@LaunchedEffect
     message?.let {
       snackbar.showSnackbar(it)
       viewModel.messageShown()
@@ -126,6 +129,7 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   Scaffold(
     snackbarHost = { SnackbarHost(snackbar) },
     containerColor = MaterialTheme.colorScheme.background,
+    contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     modifier = Modifier.testTag("platform_screen")
   ) { padding ->
     Column(modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding()) {
@@ -134,7 +138,7 @@ fun PlatformScreen(viewModel: CampusViewModel) {
         modifier = Modifier
           .fillMaxWidth()
           .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-          .background(Brush.verticalGradient(listOf(DeepBlueDark, DeepBlue)))
+          .background(Brush.linearGradient(listOf(DeepBlueDark, DeepBlue)))
           .statusBarsPadding()
           .padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 20.dp)
       ) {
@@ -197,12 +201,33 @@ fun PlatformScreen(viewModel: CampusViewModel) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
           )
         }
+        val shown = campuses.filter { c ->
+          (query.isBlank() || c.university.name.contains(query, true) || c.university.shortName.contains(query, true) || c.university.location.contains(query, true)) &&
+            when (filter) { 1 -> !c.university.underMaintenance; 2 -> c.university.underMaintenance; 3 -> c.pending > 0; else -> true }
+        }
+        Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+          SheetField(query, { query = it }, viewModel.t("Search campuses", "Tafuta vyuo"), "platform_search")
+        }
+        androidx.compose.foundation.lazy.LazyRow(
+          contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          val labels = listOf(
+            viewModel.t("All", "Vyote"), viewModel.t("Online", "Mtandaoni"),
+            viewModel.t("Offline", "Nje"), viewModel.t("Waiting", "Wanasubiri")
+          )
+          items(labels.size) { i ->
+            androidx.compose.material3.FilterChip(selected = filter == i, onClick = { filter = i }, label = { Text(labels[i]) }, modifier = Modifier.testTag("platform_filter_$i"))
+          }
+        }
         LazyColumn(
           modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
           verticalArrangement = Arrangement.spacedBy(12.dp),
           contentPadding = PaddingValues(top = 12.dp, bottom = 8.dp)
         ) {
-          items(campuses, key = { it.university.id }) { campus ->
+          if (shown.isEmpty()) item {
+            Text(viewModel.t("No campus matches.", "Hakuna chuo kinacholingana."), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
+          }
+          items(shown, key = { it.university.id }) { campus ->
             Box(modifier = Modifier.animateItem()) {
               CampusCard(
                 campus = campus,
@@ -266,7 +291,7 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   if (creating) CreateCampusSheet(viewModel = viewModel, onDismiss = { creating = false })
   managing?.let { id ->
     campuses.firstOrNull { it.university.id == id }?.let { campus ->
-      ManageCampusSheet(campus = campus, viewModel = viewModel, onDismiss = { managing = null })
+      CampusControlRoom(campus = campus, viewModel = viewModel, onDismiss = { managing = null })
     }
   }
   quick?.let { (id, which) ->
@@ -443,120 +468,5 @@ private fun CreateCampusSheet(viewModel: CampusViewModel, onDismiss: () -> Unit)
       Spacer(modifier = Modifier.height(10.dp))
       Text(error ?: "", color = DangerRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("campus_error"))
     }
-  }
-}
-
-private data class DeleteChoice(val label: String, val detail: String, val scope: WipeScope?)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ManageCampusSheet(campus: CampusSummary, viewModel: CampusViewModel, onDismiss: () -> Unit) {
-  var confirm by remember { mutableStateOf<DeleteChoice?>(null) }
-  var typed by remember { mutableStateOf("") }
-  var action by remember { mutableStateOf(0) }
-
-  when (action) {
-    1 -> MaintenanceSheet(viewModel, campus.university) { action = 0 }
-    2 -> EditCampusDetailsSheet(viewModel, campus.university, canRename = true) { action = 0 }
-    3 -> AddCampusUserSheet(viewModel, campus.university.id, allowAdmin = true) { action = 0 }
-    4 -> CampusAdminsSheet(viewModel, campus.university.id, campus.university.shortName, campus.university.name) { action = 0 }
-  }
-
-  val choices = listOf(
-    DeleteChoice(viewModel.t("Notices", "Matangazo"), "${campus.announcements}", WipeScope.ANNOUNCEMENTS),
-    DeleteChoice(viewModel.t("Timetable", "Ratiba"), "${campus.sessions}", WipeScope.TIMETABLE),
-    DeleteChoice(viewModel.t("Study materials", "Vifaa vya masomo"), "${campus.materials}", WipeScope.MATERIALS),
-    DeleteChoice(viewModel.t("Deadlines and hand-ins", "Tarehe za mwisho na kazi"), "${campus.works}", WipeScope.WORKS),
-    DeleteChoice(viewModel.t("Notifications", "Arifa"), "", WipeScope.NOTIFICATIONS),
-    DeleteChoice(viewModel.t("Programmes, courses and rooms", "Programu, kozi na vyumba"), "${campus.programmes + campus.courses + campus.rooms}", WipeScope.CATALOG),
-    DeleteChoice(viewModel.t("Students and lecturers", "Wanafunzi na wahadhiri"), "${campus.people - campus.admins}", WipeScope.PEOPLE),
-    DeleteChoice(viewModel.t("Everything, including administrators", "Kila kitu, pamoja na wasimamizi"), "", WipeScope.EVERYTHING),
-    DeleteChoice(viewModel.t("Delete this campus completely", "Futa chuo hiki kabisa"), "", null)
-  )
-
-  AppBottomSheet(
-    onDismissRequest = onDismiss,
-    title = campus.university.name,
-    subtitle = viewModel.t(
-      "${campus.people} people \u2022 ${campus.pending} waiting for approval",
-      "Watu ${campus.people} \u2022 ${campus.pending} wanasubiri idhini"
-    ),
-    tag = "manage_campus_sheet"
-  ) {
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(viewModel.t("Manage", "Simamia"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-    listOf(
-      Triple(if (campus.university.underMaintenance) viewModel.t("Offline mode: ON (tap to change)", "Nje ya mtandao: IMEWASHWA (gusa kubadilisha)") else viewModel.t("Put campus offline for maintenance", "Weka chuo nje ya mtandao kwa matengenezo"), "manage_maintenance", 1),
-      Triple(viewModel.t("Edit campus details", "Hariri taarifa za chuo"), "manage_edit_details", 2),
-      Triple(viewModel.t("Administrators: reset password, login, role, pause", "Wasimamizi: nenosiri, kuingia, jukumu, kusimamisha"), "manage_admins", 4),
-      Triple(viewModel.t("Add a person (admin, lecturer, student)", "Ongeza mtu (msimamizi, mhadhiri, mwanafunzi)"), "manage_add_user", 3)
-    ).forEach { (label, tag, which) ->
-      Text(
-        label,
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { action = which }.padding(horizontal = 8.dp, vertical = 14.dp).testTag(tag)
-      )
-    }
-    Spacer(modifier = Modifier.height(10.dp))
-    Text(viewModel.t("Delete data", "Futa data"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-    Text(
-      viewModel.t("Deleting cannot be undone.", "Kufuta hakurudishwi."),
-      style = MaterialTheme.typography.bodySmall,
-      color = DangerRed
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    choices.forEach { choice ->
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .clip(RoundedCornerShape(12.dp))
-          .clickable { typed = ""; confirm = choice }
-          .padding(horizontal = 8.dp, vertical = 14.dp)
-          .testTag("wipe_${choice.scope?.name ?: "CAMPUS"}"),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text(
-          choice.label,
-          style = MaterialTheme.typography.bodyLarge,
-          color = if (choice.scope == null || choice.scope == WipeScope.EVERYTHING) DangerRed else MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier.weight(1f)
-        )
-        if (choice.detail.isNotBlank()) {
-          Text(choice.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-      }
-    }
-  }
-
-  confirm?.let { choice ->
-    val matches = typed.trim().equals(campus.university.shortName, ignoreCase = true)
-    ConfirmSheet(
-      title = viewModel.t("Delete ${choice.label.lowercase()}?", "Futa ${choice.label.lowercase()}?"),
-      message = viewModel.t(
-        "This removes it from ${campus.university.name} for everyone and cannot be undone. Type ${campus.university.shortName} to confirm.",
-        "Hii huiondoa kwa kila mtu wa ${campus.university.name} na haiwezi kurudishwa. Andika ${campus.university.shortName} kuthibitisha."
-      ),
-      confirmLabel = viewModel.t("Delete", "Futa"),
-      dismissLabel = viewModel.t("Cancel", "Ghairi"),
-      confirmEnabled = matches,
-      onDismiss = { confirm = null },
-      onConfirm = {
-        val scope = choice.scope
-        if (scope == null) viewModel.deleteCampus(campus.university.id) else viewModel.wipeCampus(campus.university.id, scope)
-        confirm = null
-        onDismiss()
-      },
-      confirmTag = "wipe_confirm_btn",
-      extra = {
-        OutlinedTextField(
-          value = typed,
-          onValueChange = { typed = it },
-          singleLine = true,
-          placeholder = { Text(campus.university.shortName) },
-          shape = RoundedCornerShape(12.dp),
-          modifier = Modifier.fillMaxWidth().testTag("wipe_confirm_text")
-        )
-      }
-    )
   }
 }

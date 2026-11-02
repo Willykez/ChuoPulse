@@ -2,4 +2,6 @@
 <paths>
     <!-- Only the document library folder is shareable, nothing else in the app's files. -->
     <files-path name="library" path="library/" />
+    <!-- Exported lists (people as CSV) are written here just before sharing. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

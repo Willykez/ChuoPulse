@@ -90,6 +90,7 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
       "programme_required" in t -> "programme_required"
       "unknown_programme" in t -> "unknown_programme"
       "role_not_allowed" in t -> "role_not_allowed"
+      "invalid_message" in t -> "invalid_message"
       r.error == RemoteError.NOT_ALLOWED -> "not_allowed"
       r.error == RemoteError.NETWORK -> "network"
       else -> "failed"
@@ -184,6 +185,23 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
 
   suspend fun setClassRep(id: String, on: Boolean): PeopleResult =
     done(remote.rpcCall("set_class_rep", JSONObject().put("p_user", id).put("p_on", on))).also { if (it.ok) loadPeople() }
+
+  // ---------- Messages ----------
+
+  /** App manager to the administrators of one campus. Returns how many were notified, or -1 on failure. */
+  suspend fun messageCampusAdmins(universityUuid: String, title: String, message: String, urgent: Boolean): Pair<Int, String> {
+    val r = remote.rpcCall("platform_notify_campus_admins",
+      JSONObject().put("p_university", universityUuid).put("p_title", title).put("p_message", message).put("p_urgent", urgent))
+    return if (r.ok) (r.body.trim().toIntOrNull() ?: 0) to "" else -1 to codeOf(r)
+  }
+
+  /** Campus administrator to people of the own campus. [audience]: all, students, lecturers, reps, programme. */
+  suspend fun messagePeople(audience: String, programmeId: String?, title: String, message: String, urgent: Boolean): Pair<Int, String> {
+    val r = remote.rpcCall("admin_notify_people",
+      JSONObject().put("p_audience", audience).put("p_programme", programmeId ?: JSONObject.NULL)
+        .put("p_title", title).put("p_message", message).put("p_urgent", urgent))
+    return if (r.ok) (r.body.trim().toIntOrNull() ?: 0) to "" else -1 to codeOf(r)
+  }
 
   // ---------- AI settings ----------
 

@@ -826,6 +826,7 @@ class CampusViewModel(
     "invalid_number" -> t("Enter the registration or staff number.", "Andika namba ya usajili au ya mfanyakazi.")
     "programme_required" -> t("Choose a programme for the student.", "Chagua programu ya mwanafunzi.")
     "unknown_programme" -> t("That programme is not on this campus.", "Programu hiyo haipo kwenye chuo hiki.")
+    "invalid_message" -> t("Write a title and a message.", "Andika kichwa na ujumbe.")
     "role_not_allowed" -> t("That role change is not allowed.", "Mabadiliko hayo ya jukumu hayaruhusiwi.")
     "not_allowed" -> t("You are not allowed to do that.", "Huruhusiwi kufanya hivyo.")
     "network" -> t("No connection. Nothing was changed.", "Hakuna mtandao. Hakuna kilichobadilishwa.")
@@ -862,6 +863,22 @@ class CampusViewModel(
     act(if (on) t("Class representative added.", "Mwakilishi wa darasa ameongezwa.") else t("Class representative removed.", "Mwakilishi wa darasa ameondolewa.")) {
       people_.setClassRep(id, on)
     }
+
+  /** Returns an error in words, or null when sent. */
+  suspend fun sendToCampusAdmins(universityId: String, title: String, message: String, urgent: Boolean): String? {
+    val uuid = repository.auth.universityUuid(universityId) ?: return peopleErrorText("failed")
+    val (n, code) = people_.messageCampusAdmins(uuid, title, message, urgent)
+    if (n < 0) return peopleErrorText(code)
+    showMessage(if (n == 0) t("No administrators to notify on this campus.", "Hakuna wasimamizi wa kuarifu katika chuo hiki.") else t("Sent to $n administrator(s).", "Imetumwa kwa wasimamizi $n."))
+    return null
+  }
+
+  suspend fun sendToPeople(audience: String, programmeId: String?, title: String, message: String, urgent: Boolean): String? {
+    val (n, code) = people_.messagePeople(audience, programmeId, title, message, urgent)
+    if (n < 0) return peopleErrorText(code)
+    showMessage(if (n == 0) t("Nobody matched, nothing was sent.", "Hakuna aliyelingana, hakuna kilichotumwa.") else t("Sent to $n people.", "Imetumwa kwa watu $n."))
+    return null
+  }
 
   suspend fun saveAiSettings(provider: String, model: String, key: String, enabled: Boolean): String? =
     act(t("AI settings saved.", "Mipangilio ya AI imehifadhiwa.")) { people_.saveAi(provider, model, key, enabled) }
