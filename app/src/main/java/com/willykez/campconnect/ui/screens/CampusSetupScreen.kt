@@ -63,6 +63,7 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val accounts by viewModel.accounts.collectAsState()
   var assigningFor by remember { mutableStateOf<String?>(null) }
   var assigning by remember { mutableStateOf(false) }
+  var assigningCourses by remember { mutableStateOf(false) }
 
   val programmes = allProgrammes[user.universityId].orEmpty().keys.sorted()
   val courses = allCourses[user.universityId].orEmpty().toList().sortedBy { it.first }
@@ -104,6 +105,29 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
       )
     }
     item {
+      val catalog = allProgrammes[user.universityId].orEmpty()
+      val inAny = catalog.values.flatten().toSet()
+      val noProgramme = courses.filter { it.first !in inAny }
+      val emptyProgrammes = programmes.filter { catalog[it].orEmpty().isEmpty() }
+      SetupCard(
+        title = viewModel.t("Programme courses", "Kozi za programu"),
+        count = programmes.size - emptyProgrammes.size,
+        preview = when {
+          programmes.isEmpty() || courses.isEmpty() -> ""
+          emptyProgrammes.isNotEmpty() -> viewModel.t(
+            "No courses yet: ${emptyProgrammes.take(2).joinToString(", ")}" + if (noProgramme.isNotEmpty()) ". ${noProgramme.size} course(s) are in no programme." else "",
+            "Hazina kozi: ${emptyProgrammes.take(2).joinToString(", ")}" + if (noProgramme.isNotEmpty()) ". Kozi ${noProgramme.size} hazina programu." else ""
+          )
+          noProgramme.isNotEmpty() -> viewModel.t("${noProgramme.size} course(s) are in no programme.", "Kozi ${noProgramme.size} hazina programu.")
+          else -> viewModel.t("Every programme has its courses.", "Kila programu ina kozi zake.")
+        },
+        empty = viewModel.t("Add a programme and courses first, then choose which courses each programme takes.", "Ongeza programu na kozi kwanza, kisha chagua kozi za kila programu."),
+        primary = viewModel.t("Assign courses", "Weka kozi") to { assigningCourses = true },
+        tag = "setup_programme_courses",
+        showMore = false
+      )
+    }
+    item {
       val uncovered = courses.filter { accounts.isNotEmpty() && viewModel.lecturersFor(it.first).isEmpty() }
       SetupCard(
         title = viewModel.t("Course lecturers", "Wahadhiri wa kozi"),
@@ -135,6 +159,17 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
 
   open?.let { kind ->
     SetupSheet(kind = kind, viewModel = viewModel, programmes = programmes, onDismiss = { open = null })
+  }
+
+  if (assigningCourses && programmes.isNotEmpty()) {
+    ProgrammeCoursesSheet(
+      viewModel = viewModel,
+      programmes = programmes,
+      courses = courses,
+      catalog = allProgrammes[user.universityId].orEmpty(),
+      initialProgramme = null,
+      onDismiss = { assigningCourses = false }
+    )
   }
 
   if (assigning) {
@@ -262,8 +297,8 @@ private fun SetupSheet(kind: SetupKind, viewModel: CampusViewModel, programmes: 
       SetupKind.IMPORT -> {
         Text(
           viewModel.t(
-            "One course per line: code, name, programme (the programme is optional).",
-            "Kozi moja kwa mstari: msimbo, jina, programu (programu ni hiari)."
+            "One course per line: code, name, programme. Without a programme, students will not see the course until you assign it under Programme courses.",
+            "Kozi moja kwa mstari: msimbo, jina, programu. Bila programu, wanafunzi hawataiona kozi hadi uiweke kwenye Kozi za programu."
           ),
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant

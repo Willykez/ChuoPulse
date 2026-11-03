@@ -95,6 +95,15 @@ class CampusCatalog {
     return true
   }
 
+  /** Makes [codes] exactly the courses of [programme] (matched ignoring case). False when the programme is unknown. */
+  fun setProgrammeCourses(universityId: String, programme: String, codes: Set<String>): Boolean {
+    val current = catalogFor(universityId)
+    val key = current.keys.firstOrNull { it.equals(programme.trim(), ignoreCase = true) } ?: return false
+    val valid = codes.map { it.trim().uppercase() }.filter { it in coursesFor(universityId) }.toSet()
+    _programmes.value = _programmes.value + (universityId to (current + (key to valid)))
+    return true
+  }
+
   /**
    * Paste one course per line: `CODE, Title` or `CODE, Title, Programme`. A comma, semicolon or tab
    * separates the parts. Lines that cannot be read are skipped.

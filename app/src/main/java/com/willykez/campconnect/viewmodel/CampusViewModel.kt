@@ -622,6 +622,16 @@ class CampusViewModel(
     return ok
   }
 
+  /** Saves which courses belong to a programme. True when it was accepted. */
+  fun setProgrammeCourses(programme: String, codes: Set<String>): Boolean {
+    val ok = repository.setProgrammeCourses(programme, codes)
+    showMessage(
+      if (ok) t("Courses saved for $programme.", "Kozi zimehifadhiwa kwa $programme.")
+      else t("Could not save the courses.", "Imeshindwa kuhifadhi kozi.")
+    )
+    return ok
+  }
+
   fun importCourses(text: String): Boolean {
     val result = repository.importCourses(text)
     showMessage(

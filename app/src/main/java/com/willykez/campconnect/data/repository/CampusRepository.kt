@@ -1408,6 +1408,26 @@ class CampusRepository {
     return result
   }
 
+  /**
+   * Puts exactly [codes] in [programme]. Students of the programme see the added courses and lose the
+   * dropped ones. The database function `set_programme_courses` is the real authority.
+   */
+  fun setProgrammeCourses(programme: String, codes: Set<String>): Boolean {
+    if (!isCampusAdmin()) return false
+    val uni = currentUser.value.universityId
+    val before = catalog.catalogFor(uni).entries.firstOrNull { it.key.equals(programme.trim(), true) }?.value.orEmpty()
+    if (!catalog.setProgrammeCourses(uni, programme, codes)) return false
+    (codes - before).forEach { auth.enrollProgramme(uni, programme.trim(), it) }
+    recordAudit("PROGRAMME_COURSES", "${programme.trim()}: ${codes.size} courses")
+    push {
+      remote.rpcCall(
+        "set_programme_courses",
+        JSONObject().put("p_programme_name", programme.trim()).put("p_codes", JSONArray(codes.toList()))
+      )
+    }
+    return true
+  }
+
   fun addRoom(name: String): Boolean {
     if (!isCampusAdmin()) return false
     val ok = catalog.addRoom(currentUser.value.universityId, name)
