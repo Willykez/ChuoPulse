@@ -483,7 +483,7 @@ private fun ResetPasswordSheet(viewModel: CampusViewModel, name: String, error: 
     footer = { SheetButtons(viewModel.t("Cancel", "Ghairi"), onDismiss, viewModel.t("Set password", "Weka nenosiri"), { onSave(pw) }, enabled = !busy && pw.length >= 8) }
   ) {
     Spacer(Modifier.height(8.dp))
-    SheetField(pw, { pw = it }, viewModel.t("New password (8+ characters)", "Nenosiri jipya (herufi 8+)"), "reset_pw_field")
+    SheetField(pw, { pw = it }, viewModel.t("New password (8+ characters)", "Nenosiri jipya (herufi 8+)"), "reset_pw_field", password = true, startVisible = true)
     Spacer(Modifier.height(8.dp))
     OutlinedButton(onClick = { pw = generatePassword() }, shape = RoundedCornerShape(12.dp), modifier = Modifier.testTag("reset_pw_generate")) {
       Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text(viewModel.t("Generate one", "Tengeneza"))

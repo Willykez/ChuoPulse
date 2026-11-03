@@ -1,6 +1,7 @@
 @file:OptIn(ExperimentalFoundationApi::class)
 package com.willykez.campconnect.ui.screens
 
+import com.willykez.campconnect.ui.components.ScreenHeading
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.graphics.Brush
 import com.willykez.campconnect.ui.theme.PrimaryLightBlue
@@ -115,20 +116,14 @@ fun TimetableScreen(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Column {
-        Text(
-          text = viewModel.getString("tab_timetable"),
-          style = MaterialTheme.typography.headlineMedium,
-          fontWeight = FontWeight.Bold
-        )
-        Text(
-          text = java.time.LocalDate.now().format(
-            java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", java.util.Locale.forLanguageTag(if (viewModel.appLanguage.collectAsState().value == com.willykez.campconnect.data.model.AppLanguage.SWAHILI) "sw" else "en"))
-          ),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
+      ScreenHeading(
+        title = viewModel.getString("tab_timetable"),
+        subtitle = java.time.LocalDate.now().format(
+          java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", java.util.Locale.forLanguageTag(if (viewModel.appLanguage.collectAsState().value == com.willykez.campconnect.data.model.AppLanguage.SWAHILI) "sw" else "en"))
+        ),
+        icon = Icons.Default.CalendarToday,
+        modifier = Modifier.weight(1f)
+      )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
         var showAdd by remember { mutableStateOf(false) }

@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.components
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.EditLocationAlt
 import androidx.compose.material.icons.filled.Visibility
@@ -177,205 +179,133 @@ fun SessionCard(
 ) {
   val isChanged = session.status == SessionStatus.CHANGED
   val isCancelled = session.status == SessionStatus.CANCELLED
-
-  val borderColor = when (session.status) {
+  // One colour tells the story of the class: blue = on, amber = moved, red = cancelled.
+  val accent = when (session.status) {
     SessionStatus.CHANGED -> WarmAmber
     SessionStatus.CANCELLED -> DangerRed
-    SessionStatus.SCHEDULED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    SessionStatus.SCHEDULED -> DeepBlue
   }
+  val shape = RoundedCornerShape(20.dp)
 
   Card(
-    shape = RoundedCornerShape(18.dp),
-    colors = CardDefaults.cardColors(
-      containerColor = MaterialTheme.colorScheme.surface
-    ),
-    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    shape = shape,
+    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     modifier = modifier
       .fillMaxWidth()
-      .border(
-        width = if (isChanged || isCancelled) 1.5.dp else 1.dp,
-        color = borderColor,
-        shape = RoundedCornerShape(18.dp)
-      )
+      .border(width = if (isChanged || isCancelled) 1.5.dp else 1.dp, color = if (isChanged || isCancelled) accent.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), shape = shape)
       .testTag("session_card_${session.id}")
   ) {
-    Column(modifier = Modifier.padding(14.dp)) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+      // Time rail
+      Column(
+        modifier = Modifier
+          .width(86.dp)
+          .fillMaxHeight()
+          .background(accent.copy(alpha = 0.10f))
+          .padding(horizontal = 8.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
       ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(
-            modifier = Modifier
-              .clip(RoundedCornerShape(6.dp))
-              .background(DeepBlue)
-              .padding(horizontal = 8.dp, vertical = 4.dp)
-          ) {
-            Text(
-              text = session.courseCode,
-              color = Color.White,
-              fontWeight = FontWeight.Bold,
-              style = MaterialTheme.typography.labelSmall
-            )
-          }
-
-          Spacer(modifier = Modifier.width(8.dp))
-
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-              imageVector = Icons.Default.AccessTime,
-              contentDescription = "Time",
-              modifier = Modifier.size(14.dp),
-              tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-              text = "${formatClock(session.startTime, is24Hour)} - ${formatClock(session.endTime, is24Hour)}",
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-              fontWeight = FontWeight.Medium
-            )
-          }
-        }
-
-        // Status Badge
-        when (session.status) {
-          SessionStatus.CHANGED -> {
-            StatusBadge(
-              text = "Room changed",
-              backgroundColor = WarmAmberLight,
-              contentColor = Color(0xFFB45309)
-            )
-          }
-          SessionStatus.CANCELLED -> {
-            StatusBadge(
-              text = "Cancelled",
-              backgroundColor = DangerRedLight,
-              contentColor = DangerRed
-            )
-          }
-          SessionStatus.SCHEDULED -> {
-            StatusBadge(
-              text = "Confirmed",
-              backgroundColor = SuccessGreenLight,
-              contentColor = SuccessGreen
-            )
-          }
-        }
-      }
-
-      Spacer(modifier = Modifier.height(8.dp))
-
-      Text(
-        text = session.courseTitle,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        textDecoration = if (isCancelled) TextDecoration.LineThrough else TextDecoration.None,
-        color = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-      )
-
-      Spacer(modifier = Modifier.height(6.dp))
-
-      // Venue Row
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-          imageVector = Icons.Default.LocationOn,
-          contentDescription = "Venue",
-          modifier = Modifier.size(16.dp),
-          tint = if (isChanged) WarmAmber else DeepBlue
-        )
-        Spacer(modifier = Modifier.width(6.dp))
         Text(
-          text = session.venue,
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = if (isChanged) WarmAmber else MaterialTheme.colorScheme.onSurface
+          text = formatClock(session.startTime, is24Hour),
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+          color = accent,
+          textDecoration = if (isCancelled) TextDecoration.LineThrough else TextDecoration.None
         )
-      }
-
-      // Change or cancellation note
-      if (!session.changeReason.isNullOrBlank()) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isCancelled) DangerRedLight.copy(alpha = 0.5f) else WarmAmberLight.copy(alpha = 0.5f))
-            .padding(8.dp)
-        ) {
-          Row(verticalAlignment = Alignment.Top) {
-            Icon(
-              imageVector = Icons.Default.Warning,
-              contentDescription = "Notice",
-              tint = if (isCancelled) DangerRed else WarmAmber,
-              modifier = Modifier
-                .size(14.dp)
-                .padding(top = 2.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = session.changeReason,
-              style = MaterialTheme.typography.bodySmall,
-              color = if (isCancelled) Color(0xFF991B1B) else Color(0xFF78350F)
-            )
-          }
-        }
-      }
-
-      Spacer(modifier = Modifier.height(8.dp))
-
-      // Lecturer
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-          imageVector = Icons.Default.Person,
-          contentDescription = "Lecturer",
-          modifier = Modifier.size(16.dp),
-          tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.width(6.dp))
+        Box(Modifier.padding(vertical = 5.dp).size(width = 14.dp, height = 2.dp).clip(RoundedCornerShape(1.dp)).background(accent.copy(alpha = 0.5f)))
         Text(
-          text = session.lecturerName,
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
+          text = formatClock(session.endTime, is24Hour),
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontWeight = FontWeight.Medium
         )
       }
 
-      // Controls for Admin or Assigned Lecturer: full-size buttons on their own row
-      if (currentUserRole == Role.ADMIN || canModerate) {
-        Spacer(modifier = Modifier.height(12.dp))
+      Column(modifier = Modifier.weight(1f).padding(14.dp)) {
         Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          if (onEditClick != null) {
-            ActionButton(
-              label = "Relocate",
-              icon = Icons.Default.EditLocationAlt,
-              onClick = onEditClick,
-              modifier = Modifier.weight(1f),
-              tag = "change_room_${session.id}"
-            )
+          Box(
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(DeepBlue.copy(alpha = 0.12f)).padding(horizontal = 8.dp, vertical = 3.dp)
+          ) {
+            Text(text = session.courseCode, color = DeepBlue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
           }
-          if (!isCancelled && onCancelClick != null) {
-            ActionButton(
-              label = "Cancel",
-              icon = Icons.Default.EventBusy,
-              onClick = onCancelClick,
-              color = DangerRed,
-              modifier = Modifier.weight(1f),
-              tag = "cancel_session_${session.id}"
-            )
+          when (session.status) {
+            SessionStatus.CHANGED -> StatusBadge(text = "Room changed", backgroundColor = WarmAmberLight, contentColor = Color(0xFFB45309))
+            SessionStatus.CANCELLED -> StatusBadge(text = "Cancelled", backgroundColor = DangerRedLight, contentColor = DangerRed)
+            SessionStatus.SCHEDULED -> StatusBadge(text = "Confirmed", backgroundColor = SuccessGreenLight, contentColor = SuccessGreen)
           }
-          if (onDeleteClick != null && currentUserRole == Role.ADMIN) {
-            SoftIconButton(
-              icon = Icons.Default.Delete,
-              contentDescription = "Delete",
-              onClick = onDeleteClick,
-              color = DangerRed,
-              tag = "delete_session_${session.id}"
-            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+          text = session.courseTitle,
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+          textDecoration = if (isCancelled) TextDecoration.LineThrough else TextDecoration.None,
+          color = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Venue and lecturer as two tidy chips
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Default.LocationOn, contentDescription = "Venue", modifier = Modifier.size(16.dp), tint = if (isChanged) WarmAmber else DeepBlue)
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = session.venue,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isChanged) WarmAmber else MaterialTheme.colorScheme.onSurface
+          )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Default.Person, contentDescription = "Lecturer", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(text = session.lecturerName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // Change or cancellation note
+        if (!session.changeReason.isNullOrBlank()) {
+          Spacer(modifier = Modifier.height(10.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(10.dp))
+              .background(accent.copy(alpha = 0.12f))
+              .padding(10.dp)
+          ) {
+            Row(verticalAlignment = Alignment.Top) {
+              Icon(Icons.Default.Warning, contentDescription = "Notice", tint = accent, modifier = Modifier.size(14.dp).padding(top = 2.dp))
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(text = session.changeReason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            }
+          }
+        }
+
+        // Controls for Admin or Assigned Lecturer: full-size buttons on their own row
+        if (currentUserRole == Role.ADMIN || canModerate) {
+          Spacer(modifier = Modifier.height(12.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            if (onEditClick != null) {
+              ActionButton(label = "Relocate", icon = Icons.Default.EditLocationAlt, onClick = onEditClick, modifier = Modifier.weight(1f), tag = "change_room_${session.id}")
+            }
+            if (!isCancelled && onCancelClick != null) {
+              ActionButton(label = "Cancel", icon = Icons.Default.EventBusy, onClick = onCancelClick, color = DangerRed, modifier = Modifier.weight(1f), tag = "cancel_session_${session.id}")
+            }
+            if (onDeleteClick != null && currentUserRole == Role.ADMIN) {
+              SoftIconButton(icon = Icons.Default.Delete, contentDescription = "Delete", onClick = onDeleteClick, color = DangerRed, tag = "delete_session_${session.id}")
+            }
           }
         }
       }
@@ -400,6 +330,7 @@ fun AnnouncementCard(
     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     modifier = modifier
       .fillMaxWidth()
+      .clip(RoundedCornerShape(18.dp))
       .clickable { onClick() }
       .border(
         width = 1.dp,
@@ -408,7 +339,9 @@ fun AnnouncementCard(
       )
       .testTag("announcement_card_${announcement.id}")
   ) {
-    Column(modifier = Modifier.padding(14.dp)) {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+      Box(Modifier.width(5.dp).fillMaxHeight().background(if (isUrgent) DangerRed else if (announcement.priority == AnnouncementPriority.ACADEMIC) DeepBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)))
+      Column(modifier = Modifier.weight(1f).padding(14.dp)) {
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -552,6 +485,7 @@ fun AnnouncementCard(
         )
       }
     }
+    }
   }
 }
 
@@ -592,6 +526,7 @@ fun DeadlineCard(
     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     modifier = modifier
       .fillMaxWidth()
+      .clip(RoundedCornerShape(18.dp))
       .border(
         width = 1.dp,
         color = cardEdge,
@@ -599,7 +534,9 @@ fun DeadlineCard(
       )
       .testTag("deadline_card_${deadline.id}")
   ) {
-    Column(modifier = Modifier.padding(14.dp)) {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+      Box(Modifier.width(5.dp).fillMaxHeight().background(if (isCompleted) SuccessGreen else if (overdue) DangerRed else WarmAmber))
+      Column(modifier = Modifier.weight(1f).padding(14.dp)) {
       Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
@@ -815,6 +752,7 @@ fun DeadlineCard(
           }
         }
       }
+    }
     }
   }
 }

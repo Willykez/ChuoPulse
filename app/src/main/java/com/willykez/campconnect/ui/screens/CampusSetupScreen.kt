@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.screens
 
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -296,15 +298,31 @@ private fun SetupSheet(kind: SetupKind, viewModel: CampusViewModel, programmes: 
 }
 
 @Composable
-internal fun SheetField(value: String, onChange: (String) -> Unit, label: String, tag: String, password: Boolean = false) {
+internal fun SheetField(
+  value: String, onChange: (String) -> Unit, label: String, tag: String,
+  password: Boolean = false, startVisible: Boolean = false
+) {
+  // Password fields get an eye: tap it to see what you typed, tap again to hide it.
+  var visible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(startVisible) }
   OutlinedTextField(
     value = value,
     onValueChange = onChange,
     label = { Text(label) },
     singleLine = true,
     shape = RoundedCornerShape(14.dp),
-    visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation()
+    visualTransformation = if (password && !visible) androidx.compose.ui.text.input.PasswordVisualTransformation()
     else androidx.compose.ui.text.input.VisualTransformation.None,
+    keyboardOptions = if (password) androidx.compose.foundation.text.KeyboardOptions(
+      keyboardType = androidx.compose.ui.text.input.KeyboardType.Password
+    ) else androidx.compose.foundation.text.KeyboardOptions.Default,
+    trailingIcon = if (password) ({
+      androidx.compose.material3.IconButton(onClick = { visible = !visible }, modifier = Modifier.testTag("${tag}_eye")) {
+        androidx.compose.material3.Icon(
+          imageVector = if (visible) androidx.compose.material.icons.Icons.Default.VisibilityOff else androidx.compose.material.icons.Icons.Default.Visibility,
+          contentDescription = if (visible) "Hide password" else "Show password"
+        )
+      }
+    }) else null,
     modifier = Modifier.fillMaxWidth().testTag(tag)
   )
 }

@@ -1,5 +1,6 @@
 package com.willykez.campconnect.ui.screens
 
+import com.willykez.campconnect.ui.components.ScreenHeading
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -81,18 +82,12 @@ fun AnnouncementsScreen(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
-          Text(
-            text = viewModel.getString("tab_announcements"),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-          )
-          Text(
-            text = viewModel.t("Official verified academic notices", "Matangazo rasmi ya kitaaluma yaliyothibitishwa"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
-        }
+        ScreenHeading(
+          title = viewModel.getString("tab_announcements"),
+          subtitle = viewModel.t("Official verified academic notices", "Matangazo rasmi ya kitaaluma yaliyothibitishwa"),
+          icon = Icons.Default.Campaign,
+          modifier = Modifier.weight(1f)
+        )
 
         if (user.role == Role.LECTURER || user.role == Role.ADMIN || (user.role == Role.STUDENT && user.isClassRep)) {
           Surface(

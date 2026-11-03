@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.screens
 
+import androidx.compose.material.icons.filled.Assignment
+import com.willykez.campconnect.ui.components.ScreenHeading
 import com.willykez.campconnect.ui.components.ActionButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,18 +77,12 @@ fun DeadlinesScreen(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column(modifier = Modifier.weight(1f)) {
-          Text(
-            text = viewModel.getString("tab_calendar"),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-          )
-          Text(
-            text = viewModel.t("Assignments, CATs & submission dropboxes", "Kazi, majaribio na sehemu za kuwasilisha"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
-        }
+        ScreenHeading(
+          title = viewModel.getString("tab_calendar"),
+          subtitle = viewModel.t("Assignments, CATs & submission dropboxes", "Kazi, majaribio na sehemu za kuwasilisha"),
+          icon = Icons.Default.Assignment,
+          modifier = Modifier.weight(1f)
+        )
       }
 
       Spacer(modifier = Modifier.height(12.dp))

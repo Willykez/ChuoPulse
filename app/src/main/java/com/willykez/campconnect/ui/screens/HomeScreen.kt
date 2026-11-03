@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.screens
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material.icons.filled.CalendarToday
 import com.willykez.campconnect.ui.components.ActionButton
 import androidx.compose.ui.graphics.Brush
@@ -127,6 +129,11 @@ fun HomeScreen(
           .fillMaxWidth()
           .clip(RoundedCornerShape(26.dp))
           .background(Brush.linearGradient(listOf(DeepBlueDark, DeepBlue, PrimaryLightBlue)))
+          .drawBehind {
+            // Soft rings in the corner give the card depth without adding anything to read
+            drawCircle(Color.White.copy(alpha = 0.07f), radius = size.minDimension * 0.55f, center = Offset(size.width * 0.95f, size.height * 0.05f))
+            drawCircle(Color.White.copy(alpha = 0.06f), radius = size.minDimension * 0.35f, center = Offset(size.width * 0.78f, size.height * 1.0f))
+          }
           .padding(18.dp)
           .testTag("home_hero")
       ) {

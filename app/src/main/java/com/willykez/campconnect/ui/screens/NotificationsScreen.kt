@@ -1,5 +1,7 @@
 package com.willykez.campconnect.ui.screens
 
+import androidx.compose.material.icons.filled.Notifications
+import com.willykez.campconnect.ui.components.ScreenHeading
 import com.willykez.campconnect.ui.components.ActionButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -73,18 +75,12 @@ fun NotificationsScreen(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Column {
-        Text(
-          text = viewModel.getString("notifications"),
-          style = MaterialTheme.typography.headlineMedium,
-          fontWeight = FontWeight.Bold
-        )
-        Text(
-          text = "Real-time timetable changes and alert inbox",
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
+      ScreenHeading(
+        title = viewModel.getString("notifications"),
+        subtitle = viewModel.t("Timetable changes, approvals and messages", "Mabadiliko ya ratiba, idhini na ujumbe"),
+        icon = Icons.Default.Notifications,
+        modifier = Modifier.weight(1f)
+      )
 
       if (notifications.any { !it.isRead }) {
         ActionButton(
@@ -160,32 +156,32 @@ fun NotificationCard(item: NotificationItem) {
     NotificationType.TIMETABLE_CHANGE -> {
       icon = Icons.Default.EditCalendar
       iconTint = WarmAmber
-      iconBg = Color(0xFFFEF3C7)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
     NotificationType.ANNOUNCEMENT -> {
       icon = Icons.Default.Campaign
       iconTint = DeepBlue
-      iconBg = Color(0xFFE0E7FF)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
     NotificationType.DEADLINE_ALERT -> {
       icon = Icons.Default.CalendarMonth
       iconTint = DangerRed
-      iconBg = Color(0xFFFEE2E2)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
     NotificationType.APPROVAL -> {
       icon = Icons.Default.VerifiedUser
       iconTint = SuccessGreen
-      iconBg = Color(0xFFDCFCE7)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
     NotificationType.SUBMISSION_RECEIVED -> {
       icon = Icons.Default.Assignment
       iconTint = DeepBlue
-      iconBg = Color(0xFFE0E7FF)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
     NotificationType.GRADE_POSTED -> {
       icon = Icons.Default.Grade
       iconTint = SuccessGreen
-      iconBg = Color(0xFFDCFCE7)
+      iconBg = iconTint.copy(alpha = 0.16f)
     }
   }
 

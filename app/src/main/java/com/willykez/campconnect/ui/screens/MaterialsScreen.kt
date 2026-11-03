@@ -1,5 +1,8 @@
 package com.willykez.campconnect.ui.screens
 
+import com.willykez.campconnect.ui.components.EmptyState
+import com.willykez.campconnect.ui.components.ScreenHeading
+import androidx.compose.material.icons.filled.MenuBook
 import com.willykez.campconnect.ui.components.SoftIconButton
 import com.willykez.campconnect.ui.components.ActionButton
 import androidx.compose.foundation.background
@@ -104,18 +107,11 @@ fun MaterialsScreen(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
-          Text(
-            text = viewModel.getString("tab_materials"),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-          )
-          Text(
-            text = "Offline course notes, slides & handouts",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
-        }
+        ScreenHeading(
+          title = viewModel.getString("tab_materials"),
+          subtitle = viewModel.t("Course notes, slides and handouts, also offline", "Notisi, slaidi na vipeperushi vya kozi, hata bila mtandao"),
+          icon = Icons.Default.MenuBook
+        )
       }
 
       Spacer(modifier = Modifier.height(10.dp))
@@ -149,12 +145,11 @@ fun MaterialsScreen(
       Spacer(modifier = Modifier.height(12.dp))
 
       if (grouped.isEmpty()) {
-        Text(
-          text = if (materials.isEmpty()) viewModel.t("No study materials yet.", "Hakuna vifaa vya masomo bado.")
-          else viewModel.t("No file matches your search.", "Hakuna faili inayolingana na utafutaji."),
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          modifier = Modifier.padding(vertical = 24.dp)
+        EmptyState(
+          icon = Icons.Default.MenuBook,
+          title = if (materials.isEmpty()) viewModel.t("No study materials yet", "Hakuna vifaa vya masomo bado")
+          else viewModel.t("No file matches your search", "Hakuna faili inayolingana na utafutaji"),
+          hint = if (materials.isEmpty()) viewModel.t("Files your lecturers share will appear here.", "Mafaili ambayo wahadhiri wanashiriki yataonekana hapa.") else ""
         )
       }
 
