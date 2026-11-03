@@ -51,3 +51,6 @@ verify_enabled = true
 email_sent = 4
 sign_in_sign_ups = 30
 token_verifications = 30
+
+[functions.confirm-signup]
+verify_jwt = false

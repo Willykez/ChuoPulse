@@ -352,17 +352,27 @@ class AuthRepository(
 
   private fun safeJson(r: SupabaseClient.Result): JSONObject = try { r.jsonObject() } catch (e: Exception) { JSONObject() }
 
+  /**
+   * Signs in. If the server says the email is not confirmed yet (the person only registered and is
+   * waiting for an administrator), confirm it for them and try once more. No code is ever emailed:
+   * the administrator's approval is the check.
+   */
+  private suspend fun signInWithoutCode(email: String, password: String): SupabaseClient.Result {
+    var r = Backend.client.signIn(email, password)
+    if (!r.isSuccessful && safeJson(r).optString("error_code") == "email_not_confirmed") {
+      runCatching { Backend.client.invokePublic("confirm-signup", JSONObject().put("email", email)) }
+      r = Backend.client.signIn(email, password)
+    }
+    return r
+  }
+
   suspend fun liveSignIn(identifier: String, password: String): AuthOutcome {
     val email = normalizeEmail(identifier)
     // The server signs in by email. A registration number alone cannot be looked up before sign-in.
     if (!EMAIL_REGEX.matches(email)) return AuthOutcome.Failure(AuthError.USE_EMAIL)
-    val r = try { Backend.client.signIn(email, password) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
+    val r = try { signInWithoutCode(email, password) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
     if (!r.isSuccessful) {
       return when {
-        safeJson(r).optString("error_code") == "email_not_confirmed" -> {
-          runCatching { Backend.client.resendSignupCode(email) }
-          AuthOutcome.NeedCode(CodePurpose.VERIFY_EMAIL, email)
-        }
         r.code >= 500 || r.code == 0 -> AuthOutcome.Failure(AuthError.NETWORK)
         else -> AuthOutcome.Failure(AuthError.WRONG_CREDENTIALS)
       }
@@ -398,8 +408,10 @@ class AuthRepository(
       // Email confirmation is switched off on the server: a session comes back straight away, so no
       // code is needed. The person waits for an administrator to approve the account.
       val created = safeJson(r)
-      return if (created.optString("access_token").isNotBlank()) finishLiveSignIn(created)
-      else AuthOutcome.NeedCode(CodePurpose.VERIFY_EMAIL, cleanEmail)
+      if (created.optString("access_token").isNotBlank()) return finishLiveSignIn(created)
+      // The server still wants a confirmed email: finish it without a code, then sign in.
+      val s = try { signInWithoutCode(cleanEmail, password) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
+      return if (s.isSuccessful) finishLiveSignIn(safeJson(s)) else AuthOutcome.Failure(AuthError.NETWORK)
     }
     val code = safeJson(r).optString("error_code")
     val msg = safeJson(r).let { it.optString("msg").ifBlank { it.optString("message") } }.lowercase()

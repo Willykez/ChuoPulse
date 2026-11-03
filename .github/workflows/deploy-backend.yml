@@ -56,3 +56,4 @@ jobs:
           supabase functions deploy admin-manage-user
           supabase functions deploy campus-wipe-files
           supabase functions deploy ai-analyze
+          supabase functions deploy confirm-signup --no-verify-jwt

@@ -1,6 +1,19 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 package com.willykez.campconnect.ui.screens
 
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Brush
 import com.willykez.campconnect.ui.theme.DeepBlueDark
 import com.willykez.campconnect.ui.theme.PrimaryLightBlue
@@ -96,6 +109,10 @@ fun ProfileScreen(
           .padding(top = 8.dp)
           .clip(RoundedCornerShape(24.dp))
           .background(Brush.linearGradient(listOf(DeepBlueDark, DeepBlue, PrimaryLightBlue)))
+          .drawBehind {
+            drawCircle(Color.White.copy(alpha = 0.07f), radius = size.minDimension * 0.6f, center = Offset(size.width * 0.92f, size.height * 0.0f))
+            drawCircle(Color.White.copy(alpha = 0.06f), radius = size.minDimension * 0.4f, center = Offset(size.width * 0.05f, size.height * 0.95f))
+          }
           .padding(20.dp)
           .testTag("profile_user_card")
       ) {
@@ -148,11 +165,11 @@ fun ProfileScreen(
           .testTag("profile_details_card")
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
-          Text(viewModel.t("Details", "Taarifa"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-          Spacer(modifier = Modifier.height(8.dp))
-          ProfileInfoRow(viewModel.t("Registration / staff number", "Namba ya usajili / mfanyakazi"), user.studentNumber ?: user.staffNumber ?: viewModel.t("Not assigned", "Haijatolewa"))
-          ProfileInfoRow(viewModel.t("Programme / department", "Programu / idara"), user.programme ?: viewModel.t("General", "Jumla"))
-          user.cohort?.let { ProfileInfoRow(viewModel.t("Year / designation", "Mwaka / cheo"), it) }
+          ProfileSectionTitle(viewModel.t("Details", "Taarifa"), Icons.Default.Badge)
+          Spacer(modifier = Modifier.height(6.dp))
+          ProfileInfoRow(viewModel.t("Registration / staff number", "Namba ya usajili / mfanyakazi"), user.studentNumber ?: user.staffNumber ?: viewModel.t("Not assigned", "Haijatolewa"), Icons.Default.Badge)
+          ProfileInfoRow(viewModel.t("Programme / department", "Programu / idara"), user.programme ?: viewModel.t("General", "Jumla"), Icons.Default.School)
+          user.cohort?.let { ProfileInfoRow(viewModel.t("Year / designation", "Mwaka / cheo"), it, Icons.Default.CalendarToday) }
         }
       }
     }
@@ -164,21 +181,27 @@ fun ProfileScreen(
         modifier = Modifier.fillMaxWidth()
       ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-          Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text("Choose how ChuoPulse looks", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          ProfileSectionTitle(viewModel.t("Appearance", "Mwonekano"), Icons.Default.Palette)
+          Text(viewModel.t("Choose how ChuoPulse looks", "Chagua jinsi ChuoPulse inavyoonekana"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
           Spacer(Modifier.height(12.dp))
           SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             AppThemeMode.values().forEachIndexed { index, mode ->
               SegmentedButton(
                 selected = AppThemeSettings.mode == mode,
                 onClick = { AppThemeSettings.set(context, mode) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = AppThemeMode.values().size)
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = AppThemeMode.values().size),
+                icon = {
+                  Icon(
+                    when (mode) { AppThemeMode.SYSTEM -> Icons.Default.PhoneAndroid; AppThemeMode.LIGHT -> Icons.Default.LightMode; AppThemeMode.DARK -> Icons.Default.DarkMode },
+                    contentDescription = null, modifier = Modifier.size(16.dp)
+                  )
+                }
               ) {
                 Text(
                   when (mode) {
-                    AppThemeMode.SYSTEM -> "System"
-                    AppThemeMode.LIGHT -> "Light"
-                    AppThemeMode.DARK -> "Dark"
+                    AppThemeMode.SYSTEM -> viewModel.t("System", "Mfumo")
+                    AppThemeMode.LIGHT -> viewModel.t("Light", "Mwanga")
+                    AppThemeMode.DARK -> viewModel.t("Dark", "Giza")
                   },
                   style = MaterialTheme.typography.labelSmall
                 )
@@ -192,17 +215,13 @@ fun ProfileScreen(
     item { ClassRepsCard(viewModel, user) }
     item { ChangePasswordCard(viewModel) }
     item {
-      Text(
-        text = "Preferences & Offline Sync",
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-      )
+      ProfileSectionTitle(viewModel.t("Preferences & Offline Sync", "Mapendeleo na Nje ya Mtandao"), Icons.Default.Tune)
       Spacer(modifier = Modifier.height(8.dp))
 
       Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
       ) {
         Column(modifier = Modifier.padding(14.dp)) {
           Row(
@@ -316,16 +335,12 @@ fun ProfileScreen(
 
     if (devices.isNotEmpty()) {
       item {
-        Text(
-          text = viewModel.t("Phones signed in", "Simu zilizoingia"),
-          style = MaterialTheme.typography.titleMedium,
-          fontWeight = FontWeight.Bold
-        )
+        ProfileSectionTitle(viewModel.t("Phones signed in", "Simu zilizoingia"), Icons.Default.Devices)
         Spacer(modifier = Modifier.height(8.dp))
         Card(
           shape = RoundedCornerShape(14.dp),
           colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-          modifier = Modifier.fillMaxWidth()
+          modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
         ) {
           Column(modifier = Modifier.padding(14.dp)) {
             devices.forEach { device ->
@@ -363,16 +378,12 @@ fun ProfileScreen(
     }
 
     item {
-      Text(
-        text = viewModel.t("My data", "Data zangu"),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-      )
+      ProfileSectionTitle(viewModel.t("My data", "Data zangu"), Icons.Default.Shield)
       Spacer(modifier = Modifier.height(8.dp))
       Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
       ) {
         Column(modifier = Modifier.padding(14.dp)) {
           Text(
@@ -413,8 +424,9 @@ fun ProfileScreen(
     item {
       Button(
         onClick = { viewModel.signOut() },
+        shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
-        modifier = Modifier.fillMaxWidth().testTag("sign_out_btn")
+        modifier = Modifier.fillMaxWidth().height(52.dp).testTag("sign_out_btn")
       ) {
         Text(viewModel.t("Sign out", "Toka"))
       }
@@ -436,23 +448,31 @@ fun ProfileScreen(
 }
 
 @Composable
-fun ProfileInfoRow(label: String, value: String) {
-  Row(
-    modifier = Modifier
-      .fillMaxWidth()
-      .padding(vertical = 4.dp),
-    horizontalArrangement = Arrangement.SpaceBetween
-  ) {
-    Text(
-      text = label,
-      style = MaterialTheme.typography.bodySmall,
-      color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Text(
-      text = value,
-      style = MaterialTheme.typography.bodySmall,
-      fontWeight = FontWeight.Bold
-    )
+fun ProfileSectionTitle(text: String, icon: ImageVector) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(DeepBlue.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+      Icon(icon, contentDescription = null, tint = DeepBlue, modifier = Modifier.size(16.dp))
+    }
+    Spacer(Modifier.width(10.dp))
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
   }
 }
 
+@Composable
+fun ProfileInfoRow(label: String, value: String, icon: ImageVector? = null) {
+  Row(
+    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    if (icon != null) {
+      Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(DeepBlue.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = DeepBlue, modifier = Modifier.size(20.dp))
+      }
+      Spacer(Modifier.width(12.dp))
+    }
+    Column(Modifier.weight(1f)) {
+      Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+    }
+  }
+}

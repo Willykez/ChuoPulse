@@ -181,6 +181,12 @@ class SupabaseClient(
     return request("POST", "$projectUrl/functions/v1/$name", body = payload, bearer = accessToken)
   }
 
+  /** Calls an Edge Function that does not need a signed-in person (deployed with --no-verify-jwt). */
+  suspend fun invokePublic(name: String, payload: JSONObject): Result {
+    require(name.matches(Regex("[a-z0-9-]{1,64}"))) { "Invalid function name" }
+    return request("POST", "$projectUrl/functions/v1/$name", body = payload, bearer = null)
+  }
+
   suspend fun request(
     method: String,
     url: String,

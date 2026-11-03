@@ -1,6 +1,10 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 package com.willykez.campconnect.ui.screens
 
+import com.willykez.campconnect.ui.theme.DeepBlueDark
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.filled.CloudDone
@@ -158,57 +162,67 @@ fun ProcessedDocumentsScreen(
 
   Column(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
     Spacer(Modifier.height(8.dp))
-    // Header: AI badge, title, and where the analysis happens
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-      Box(
-        Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(listOf(DeepBlue, PrimaryLightBlue))),
-        contentAlignment = Alignment.Center
-      ) { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp)) }
-      Spacer(Modifier.width(10.dp))
-      Column(Modifier.weight(1f)) {
-        Text(viewModel.t("AI Summaries", "Muhtasari wa AI"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-          when {
-            analysing > 0 -> viewModel.t("${documents.size} documents \u2022 $analysing analysing", "Hati ${documents.size} \u2022 $analysing zinachambuliwa")
-            else -> viewModel.t("${documents.size} documents stored on this device", "Hati ${documents.size} zimehifadhiwa kwenye simu hii")
-          },
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-      }
-      Surface(shape = RoundedCornerShape(8.dp), color = SuccessGreenLight) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-          Icon(Icons.Default.CloudDone, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
-          Spacer(Modifier.width(4.dp))
-          Text(viewModel.t("On-device", "Kwenye simu"), style = MaterialTheme.typography.labelSmall, color = SuccessGreen, fontWeight = FontWeight.Bold)
+    val ai by viewModel.aiStatus.collectAsState()
+    LaunchedEffect(Unit) { viewModel.refreshAiStatus() }
+
+    // Hero: what this is, where the work happens, and the one action that matters
+    Box(
+      Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(24.dp))
+        .background(Brush.linearGradient(listOf(DeepBlueDark, DeepBlue, PrimaryLightBlue)))
+        .drawBehind {
+          drawCircle(Color.White.copy(alpha = 0.07f), radius = size.minDimension * 0.55f, center = Offset(size.width * 0.95f, size.height * 0.02f))
+          drawCircle(Color.White.copy(alpha = 0.06f), radius = size.minDimension * 0.35f, center = Offset(size.width * 0.08f, size.height * 1.0f))
         }
-      }
-    }
-    Spacer(Modifier.height(12.dp))
-    // Hero: the main action, always one tap away
-    Card(
-      shape = RoundedCornerShape(18.dp),
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-      elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-      modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+        .padding(18.dp)
+        .testTag("summaries_hero")
     ) {
-      Column(Modifier.padding(16.dp)) {
+      Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(Color.White.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center
+          ) { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp)) }
+          Spacer(Modifier.width(12.dp))
+          Column(Modifier.weight(1f)) {
+            Text(viewModel.t("AI Summaries", "Muhtasari wa AI"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(
+              when {
+                analysing > 0 -> viewModel.t("${documents.size} documents \u2022 $analysing analysing", "Hati ${documents.size} \u2022 $analysing zinachambuliwa")
+                else -> viewModel.t("${documents.size} documents saved on this phone", "Hati ${documents.size} zimehifadhiwa kwenye simu hii")
+              },
+              style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f)
+            )
+          }
+          Surface(shape = RoundedCornerShape(50), color = Color.White.copy(alpha = 0.2f)) {
+            Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Default.CloudDone, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+              Spacer(Modifier.width(4.dp))
+              Text(
+                if (ai.enabled && ai.hasKey) "AI" else viewModel.t("Basic", "Msingi"),
+                style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold
+              )
+            }
+          }
+        }
+        Spacer(Modifier.height(14.dp))
         Text(
           viewModel.t("Turn any document into a study summary", "Geuza hati yoyote kuwa muhtasari wa kusoma"),
-          style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold
+          style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White
         )
         Spacer(Modifier.height(4.dp))
         Text(
           viewModel.t(
-            "PDF, Word, slides, sheets and text. Key topics, objectives and study tips are found on your phone; nothing is uploaded.",
-            "PDF, Word, slaidi, majedwali na maandishi. Mada kuu, malengo na vidokezo hupatikana kwenye simu yako; hakuna kinachopakiwa."
+            "PDF, Word, slides, sheets, photos and text. The words are sent securely to the campus AI to write the summary, topics and study tips. The file itself is not uploaded. Without a connection it is analysed on your phone.",
+            "PDF, Word, slaidi, majedwali, picha na maandishi. Maneno hutumwa kwa usalama kwa AI ya chuo kuandika muhtasari, mada na vidokezo. Faili lenyewe halipakiwi. Bila mtandao huchambuliwa kwenye simu yako."
           ),
-          style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+          style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.85f)
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         Button(
           onClick = { addDocuments() },
-          colors = ButtonDefaults.buttonColors(containerColor = DeepBlue),
+          colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = DeepBlue),
           shape = RoundedCornerShape(14.dp),
           modifier = Modifier.fillMaxWidth().height(50.dp).testTag("analyse_document_btn")
         ) {
@@ -249,8 +263,10 @@ fun ProcessedDocumentsScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
       ) {
-        Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(44.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
+        Box(Modifier.size(84.dp).clip(RoundedCornerShape(28.dp)).background(DeepBlue.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+          Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(40.dp), tint = DeepBlue)
+        }
+        Spacer(Modifier.height(12.dp))
         Text(
           if (documents.isEmpty()) viewModel.t("Analyse your first document", "Changanua hati yako ya kwanza")
           else viewModel.t("No summaries match these filters", "Hakuna muhtasari unaolingana"),
@@ -309,7 +325,7 @@ fun ProcessedDocumentsScreen(
     AppBottomSheet(
       onDismissRequest = { chosenFiles = emptyList() },
       title = viewModel.t("Analyse documents", "Changanua hati"),
-      subtitle = viewModel.t("The analysis happens on your phone. Your files are not uploaded.", "Uchambuzi unafanyika kwenye simu yako. Faili hazipakiwi."),
+      subtitle = viewModel.t("The words are sent securely to the campus AI. The file is not uploaded.", "Maneno hutumwa kwa usalama kwa AI ya chuo. Faili halipakiwi."),
       tag = "analyse_sheet",
       footer = {
         SheetButtons(
@@ -534,11 +550,24 @@ private fun DocumentCard(
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
           Text(document.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-          Text(
-            if (document.courseCode == "GENERAL") t("General", "Jumla") else "${document.courseCode} \u2022 ${document.courseTitle}",
-            color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
-          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              if (document.courseCode == "GENERAL") t("General", "Jumla") else "${document.courseCode} \u2022 ${document.courseTitle}",
+              color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
+              maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+            )
+            if (document.tags.split(",").any { it.trim() == "ai" }) {
+              Spacer(Modifier.width(6.dp))
+              Row(
+                Modifier.clip(RoundedCornerShape(6.dp)).background(DeepBlue.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = DeepBlue, modifier = Modifier.size(11.dp))
+                Spacer(Modifier.width(3.dp))
+                Text("AI", style = MaterialTheme.typography.labelSmall, color = DeepBlue, fontWeight = FontWeight.Bold)
+              }
+            }
+          }
         }
         IconButton(onClick = onDelete, modifier = Modifier.testTag("delete_summary_${document.id}")) {
           Icon(Icons.Default.DeleteOutline, contentDescription = t("Delete summary", "Futa muhtasari"), tint = MaterialTheme.colorScheme.error)
@@ -588,10 +617,19 @@ private fun DocumentCard(
             }
           }
           Spacer(Modifier.height(6.dp))
-          Text(
-            "${formatSize(document.fileSize)}  \u2022  ${document.pageCount} pages  \u2022  ${document.wordCount} words  \u2022  ${document.readingTimeMinutes} min read",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-          )
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(
+              formatSize(document.fileSize),
+              "${document.pageCount} " + t("pages", "kurasa"),
+              "${document.wordCount} " + t("words", "maneno"),
+              "${document.readingTimeMinutes} " + t("min read", "dak. kusoma")
+            ).forEach { stat ->
+              Text(
+                stat, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 8.dp, vertical = 3.dp)
+              )
+            }
+          }
         }
       }
       Text(

@@ -50,5 +50,10 @@ Never put the service-role key, database password or access token in the app, in
   **App manager** (campus -> Manage -> Administrators): reset passwords, edit logins, change role, pause/resume admins.
 * **Real AI** document analysis through the `ai-analyze` Edge Function (Gemini or Claude). See `.env.example`.
 
-Deploy: run `supabase/migrations/20261104000000_admin_people_and_ai.sql` and then `20261105000000_admin_messaging.sql`, then deploy the functions
+Deploy: run, in order, `20261104000000_admin_people_and_ai.sql`, `20261105000000_admin_messaging.sql`, `20261106000000_programme_courses.sql`, `20261107000000_auto_confirm_pending.sql`, then deploy the functions
 `admin-manage-user` and `ai-analyze` (or run the **Deploy backend** workflow).
+
+### No emailed sign-up codes
+People who register wait for an administrator to approve them; no code is emailed. In the Supabase dashboard
+turn **Authentication → Providers → Email → "Confirm email" OFF** (recommended). If it is still on, the app
+finishes the sign-up through the `confirm-signup` function (deploy it with `--no-verify-jwt`).
