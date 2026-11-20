@@ -12,7 +12,6 @@ import com.willykez.campconnect.data.repository.PlatformConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.security.MessageDigest
 import android.util.Base64
 import java.util.UUID
 
@@ -45,30 +44,20 @@ enum class AuthError {
   CODE_WRONG,
   CODE_EXPIRED,
   TOO_MANY_ATTEMPTS,
-  /** The server accepted the request but could not send the email (email service not set up, or recipient not allowed). */
   EMAIL_SEND_FAILED,
-  /** Too many emails requested in a short time. */
   RATE_LIMITED,
-  /** The server could not be reached, or it failed. Nothing was changed. */
   NETWORK
 }
 
 sealed interface AuthOutcome {
-  /** A session was started. */
   data class Success(val userId: String) : AuthOutcome
 
-  /** A six-digit code was issued and must be entered next. */
   data class NeedCode(val purpose: CodePurpose, val email: String) : AuthOutcome
 
-  /** Password was changed. The person now signs in with the new one. */
   object PasswordChanged : AuthOutcome
 
   data class Failure(val error: AuthError) : AuthOutcome
 
-  /**
-   * An administrator must finish the second step (authenticator app) before the session starts.
-   * [enrolling] is true the first time: [secret] and [uri] then set the authenticator app up.
-   */
   data class NeedMfa(val enrolling: Boolean, val secret: String?, val uri: String?) : AuthOutcome
 }
 
@@ -78,24 +67,15 @@ data class DeviceSession(val id: String, val label: String, val lastActive: Stri
 
 data class Account(
   val profile: UserProfile,
-  val salt: String,
-  val passwordHash: String,
-  val emailVerified: Boolean,
-  val trustedDevices: Set<String> = emptySet()
+  val emailVerified: Boolean
 )
 
-/**
- * Sign-in, sign-up, email codes, password reset, second step and the registry's account actions.
- * The server (Supabase Auth) decides every outcome; this class keeps the signed-in person and the
- * directory of accounts the phone has been told about.
- */
 class AuthRepository(
   private val catalog: CampusCatalog = CampusCatalog()
 ) {
 
   val thisDeviceId: String = "dev-" + UUID.randomUUID().toString().take(8)
 
-  // Nobody is held on the phone until the server returns them.
   private val _accounts = MutableStateFlow<Map<String, Account>>(emptyMap())
   val accounts: StateFlow<Map<String, Account>> = _accounts.asStateFlow()
 
@@ -104,11 +84,6 @@ class AuthRepository(
 
   private val _devices = MutableStateFlow<Map<String, List<DeviceSession>>>(emptyMap())
   val devices: StateFlow<Map<String, List<DeviceSession>>> = _devices.asStateFlow()
-
-  /** Wired by the data repository: (userId, title, message). */
-  var onNotify: (String, String, String) -> Unit = { _, _, _ -> }
-
-  // ---------- Password rules ----------
 
   private val commonPasswords = setOf(
     "password", "password1", "password123", "12345678", "123456789", "1234567890",
@@ -136,8 +111,6 @@ class AuthRepository(
     return PasswordCheck(strength, problems)
   }
 
-  // ---------- Server sign-in, sign-up, codes and password reset ----------
-
   private data class LivePending(
     val access: String,
     val refresh: String?,
@@ -152,13 +125,11 @@ class AuthRepository(
   private var uniAppIdByUuid: Map<String, String> = emptyMap()
   private var programmeNameById: Map<String, String> = emptyMap()
 
-  /** The signed-in person's access token, for calls to the server. Null when signed out. */
   val accessToken: String? get() = liveAccess
 
   private fun JSONObject.text(key: String): String? =
     if (isNull(key)) null else optString(key).trim().ifBlank { null }
 
-  /** Loads the campuses (and their programmes) people can choose at sign-up. Safe to call again. */
   suspend fun loadDirectory(): Boolean {
     return try {
       val u = Backend.client.select(
@@ -190,7 +161,6 @@ class AuthRepository(
       uniAppIdByUuid = ids
       catalog.replaceUniversities(list)
 
-      // Programmes are optional here: sign-up works without them (a student can type theirs).
       val p = Backend.client.select("programmes", "select=id,name,university_id&order=name", "")
       if (p.isSuccessful) {
         val prow = p.jsonArray()
@@ -211,10 +181,6 @@ class AuthRepository(
     }
   }
 
-  /**
-   * The signed-in person changes their own password (for example after an administrator gave them a
-   * starting one). The current password is checked first, so a borrowed unlocked phone cannot change it.
-   */
   suspend fun changePassword(currentPassword: String, newPassword: String): AuthOutcome {
     val id = _session.value?.userId ?: return AuthOutcome.Failure(AuthError.WRONG_CREDENTIALS)
     val email = _accounts.value[id]?.profile?.email ?: return AuthOutcome.Failure(AuthError.WRONG_CREDENTIALS)
@@ -231,7 +197,6 @@ class AuthRepository(
     return if (u.isSuccessful) AuthOutcome.PasswordChanged else AuthOutcome.Failure(AuthError.PASSWORD_WEAK)
   }
 
-  /** Checks the details typed for a person an administrator is adding. Null when they are fine. */
   fun checkAdminDetails(fullName: String, email: String, idNumber: String, password: String): AuthError? {
     val cleanEmail = normalizeEmail(email)
     return when {
@@ -243,7 +208,6 @@ class AuthRepository(
     }
   }
 
-  /** Gets a new access token with the refresh token (the old one lasts about an hour). Null if that fails. */
   suspend fun refreshAccessToken(): String? {
     val refresh = liveRefresh ?: return null
     val rr = runCatching { Backend.client.refresh(refresh) }.getOrNull() ?: return null
@@ -256,19 +220,13 @@ class AuthRepository(
     return access
   }
 
-  /** The database id of a campus, from the id the app uses (its lower-case code). */
   fun universityUuid(appId: String): String? = uniAppIdByUuid.entries.firstOrNull { it.value == appId }?.key
 
-  /** The database id of a programme by name, within one campus. */
   fun programmeUuid(universityAppId: String, name: String?): String? {
     if (name.isNullOrBlank()) return null
     return programmeNameById.entries.firstOrNull { it.value.equals(name.trim(), ignoreCase = true) }?.key
   }
 
-  /**
-   * Loads the accounts the signed-in administrator is allowed to see (row-level security limits this to
-   * their own campus) so the approvals list shows real people. A student or lecturer only sees themselves.
-   */
   suspend fun loadAccounts(): Boolean {
     val access = liveAccess ?: return false
     return try {
@@ -281,10 +239,9 @@ class AuthRepository(
       for (i in 0 until rows.length()) {
         val o = rows.getJSONObject(i)
         val p = profileFrom(o)
-        if (p.id == me) continue // my own record is kept by the sign-in
-        loaded[p.id] = Account(p, "live", "", emailVerified = o.optBoolean("email_verified"))
+        if (p.id == me) continue
+        loaded[p.id] = Account(p, emailVerified = o.optBoolean("email_verified"))
       }
-      // Who teaches / studies what (administrators see their whole campus).
       val teach = Backend.client.select("teaching_assignments", "select=lecturer_id,course_code&limit=5000", access)
       val enrol = Backend.client.select("enrollments", "select=student_id,course_code&limit=20000", access)
       val teachMap = mutableMapOf<String, MutableSet<String>>()
@@ -317,7 +274,7 @@ class AuthRepository(
     val status = when (row.optString("status")) {
       "approved" -> AccountStatus.APPROVED
       "pending" -> AccountStatus.PENDING
-      else -> AccountStatus.REJECTED // rejected or suspended: not allowed in
+      else -> AccountStatus.REJECTED
     }
     val programme = row.text("department") ?: row.text("programme_id")?.let { programmeNameById[it] }
     return UserProfile(
@@ -337,30 +294,20 @@ class AuthRepository(
     )
   }
 
-  /** Updates one loaded profile in place (courses, class-representative mark). */
   fun updateProfile(id: String, change: (UserProfile) -> UserProfile) {
     val acc = _accounts.value[id] ?: return
     putAccount(acc.copy(profile = change(acc.profile)))
   }
 
-  /** The signed-in person's id, or null. */
-  val myId: String? get() = _session.value?.userId
-
-  /** Short (CS210) -> server course code (CUOM:CS210) for this campus. */
   fun serverCourseCode(universityCode: String, short: String): String =
     if (short.contains(':')) short else "${universityCode.uppercase()}:${short.trim().uppercase()}"
 
   private fun safeJson(r: SupabaseClient.Result): JSONObject = try { r.jsonObject() } catch (e: Exception) { JSONObject() }
 
-  /**
-   * Signs in. If the server says the email is not confirmed yet (the person only registered and is
-   * waiting for an administrator), confirm it for them and try once more. No code is ever emailed:
-   * the administrator's approval is the check.
-   */
   private suspend fun signInWithoutCode(email: String, password: String): SupabaseClient.Result {
     var r = Backend.client.signIn(email, password)
     if (!r.isSuccessful && safeJson(r).optString("error_code") == "email_not_confirmed") {
-      runCatching { Backend.client.invokePublic("confirm-signup", JSONObject().put("email", email)) }
+      runCatching { Backend.client.invokePublic("confirm-signup", JSONObject().put("email", email).put("password", password)) }
       r = Backend.client.signIn(email, password)
     }
     return r
@@ -368,7 +315,6 @@ class AuthRepository(
 
   suspend fun liveSignIn(identifier: String, password: String): AuthOutcome {
     val email = normalizeEmail(identifier)
-    // The server signs in by email. A registration number alone cannot be looked up before sign-in.
     if (!EMAIL_REGEX.matches(email)) return AuthOutcome.Failure(AuthError.USE_EMAIL)
     val r = try { signInWithoutCode(email, password) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
     if (!r.isSuccessful) {
@@ -405,11 +351,8 @@ class AuthRepository(
       .put(if (isStaff) "department" else "programme", programmeOrDepartment?.trim().orEmpty())
     val r = try { Backend.client.signUp(cleanEmail, password, meta) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
     if (r.isSuccessful) {
-      // Email confirmation is switched off on the server: a session comes back straight away, so no
-      // code is needed. The person waits for an administrator to approve the account.
       val created = safeJson(r)
       if (created.optString("access_token").isNotBlank()) return finishLiveSignIn(created)
-      // The server still wants a confirmed email: finish it without a code, then sign in.
       val s = try { signInWithoutCode(cleanEmail, password) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
       return if (s.isSuccessful) finishLiveSignIn(safeJson(s)) else AuthOutcome.Failure(AuthError.NETWORK)
     }
@@ -421,8 +364,6 @@ class AuthRepository(
         code == "weak_password" -> AuthError.PASSWORD_WEAK
         code == "over_email_send_rate_limit" || r.code == 429 -> AuthError.RATE_LIMITED
         code == "email_address_not_authorized" || msg.contains("sending") || msg.contains("smtp") -> AuthError.EMAIL_SEND_FAILED
-        // The database refuses a sign-up with a generic "Database error saving new user": the usual
-        // cause is a registration or staff number already used at that campus.
         r.code == 500 -> AuthError.NUMBER_TAKEN
         else -> AuthError.NETWORK
       }
@@ -449,8 +390,6 @@ class AuthRepository(
     val clean = normalizeEmail(email)
     val r = try { Backend.client.recover(clean) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
     if (!r.isSuccessful) {
-      // An unknown email still answers 200 (no account enumeration), so a failure here is a real
-      // delivery problem and the person must be told instead of waiting for a code that never comes.
       val j = safeJson(r)
       val c = j.optString("error_code")
       val msg = j.optString("msg").ifBlank { j.optString("message") }.lowercase()
@@ -472,11 +411,10 @@ class AuthRepository(
     val access = safeJson(v).optString("access_token")
     if (access.isBlank()) return AuthOutcome.Failure(AuthError.CODE_WRONG)
     val u = try { Backend.client.updatePassword(access, newPassword) } catch (e: Exception) { return AuthOutcome.Failure(AuthError.NETWORK) }
-    runCatching { Backend.client.signOut(access) } // the reset session is not kept
+    runCatching { Backend.client.signOut(access) }
     return if (u.isSuccessful) AuthOutcome.PasswordChanged else AuthOutcome.Failure(AuthError.PASSWORD_WEAK)
   }
 
-  /** Reads the profile with the new token and either starts the session or asks for the second step. */
   private suspend fun finishLiveSignIn(json: JSONObject): AuthOutcome {
     val access = json.optString("access_token")
     val refresh = json.text("refresh_token")
@@ -490,7 +428,6 @@ class AuthRepository(
     val profile = profileFrom(row)
     if (profile.status == AccountStatus.REJECTED) return AuthOutcome.Failure(AuthError.ACCOUNT_NOT_ACTIVE)
 
-    // Administrators finish a second step (authenticator app) because the database asks for it.
     if (profile.role == Role.ADMIN && profile.status == AccountStatus.APPROVED) {
       return beginMfa(access, refresh, profile, row)
     }
@@ -524,7 +461,6 @@ class AuthRepository(
     }
   }
 
-  /** Completes the administrator's second step with the six digits from the authenticator app. */
   suspend fun liveVerifyMfa(code: String): AuthOutcome {
     val p = pendingMfa ?: return AuthOutcome.Failure(AuthError.CODE_EXPIRED)
     return try {
@@ -543,18 +479,15 @@ class AuthRepository(
     liveAccess = access
     liveRefresh = refresh
     pendingMfa = null
-    putAccount(Account(profile = profile, salt = "live", passwordHash = "", emailVerified = true))
+    putAccount(Account(profile = profile, emailVerified = true))
     _session.value = Session(userId = profile.id, deviceId = thisDeviceId)
     if (row != null) lastProfileRow = row
     persistSession()
     return AuthOutcome.Success(profile.id)
   }
 
-  // ---------- Staying signed in ----------
-
   private var lastProfileRow: JSONObject? = null
 
-  /** Writes the current tokens to the phone so the next app start needs no password. */
   private fun persistSession() {
     val ctx = Backend.appContext ?: return
     val id = _session.value?.userId ?: return
@@ -564,18 +497,12 @@ class AuthRepository(
     SessionStore.save(ctx, SavedSession(id, access, refresh, row.toString()))
   }
 
-  /** Reads the `aal` claim of an access token ("aal2" once the administrator's second step is done). */
   private fun aalOf(accessToken: String): String = runCatching {
     val payload = accessToken.split('.')[1]
     val raw = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     JSONObject(String(raw, Charsets.UTF_8)).optString("aal")
   }.getOrDefault("")
 
-  /**
-   * Brings the saved sign-in back when the app starts. True when the person is signed in again.
-   * - Server says the sign-in is no longer valid (signed out elsewhere, account removed): forget it.
-   * - No network: start from the saved profile; every request refreshes the token as needed.
-   */
   suspend fun restoreSession(): Boolean {
     val ctx = Backend.appContext ?: return false
     if (!Backend.live) return false
@@ -600,12 +527,10 @@ class AuthRepository(
         SessionStore.clear(ctx)
         return false
       }
-      // 5xx: the server is struggling, keep the saved sign-in and start from the saved profile.
     }
     if (uniAppIdByUuid.isEmpty()) runCatching { loadDirectory() }
     val profile = profileFrom(freshRow)
     if (profile.status == AccountStatus.REJECTED) { SessionStore.clear(ctx); return false }
-    // An administrator's session must carry the second step. If it does not, ask for it at sign-in.
     if (profile.role == Role.ADMIN && profile.status == AccountStatus.APPROVED &&
       rr != null && rr.isSuccessful && aalOf(access) != "aal2"
     ) {
@@ -616,7 +541,6 @@ class AuthRepository(
     return true
   }
 
-  /** Re-reads the signed-in person's profile (for example to see that the registry approved them). */
   suspend fun liveRefreshProfile(): Boolean {
     val id = _session.value?.userId ?: return false
     var access = liveAccess ?: return false
@@ -634,13 +558,12 @@ class AuthRepository(
     }
     if (!r.isSuccessful) return false
     val row = runCatching { r.jsonArray().optJSONObject(0) }.getOrNull() ?: return false
-    putAccount(Account(profile = profileFrom(row), salt = "live", passwordHash = "", emailVerified = true))
+    putAccount(Account(profile = profileFrom(row), emailVerified = true))
     lastProfileRow = row
     persistSession()
     return true
   }
 
-  /** Tells the server this session is over (best effort) and forgets the tokens. */
   suspend fun liveSignOutRemote() {
     val token = liveAccess
     liveAccess = null
@@ -650,8 +573,6 @@ class AuthRepository(
     Backend.appContext?.let { SessionStore.clear(it) }
     if (token != null) runCatching { Backend.client.signOut(token) }
   }
-
-  // ---------- Sessions ----------
 
   fun signOut() {
     val s = _session.value
@@ -673,38 +594,6 @@ class AuthRepository(
     if (_session.value?.userId == userId) _session.value = null
   }
 
-  // ---------- Registry actions (permission is checked by the caller) ----------
-
-  fun approve(userId: String, role: Role, programme: String?, teaches: Set<String>): UserProfile? {
-    val account = _accounts.value[userId] ?: return null
-    val old = account.profile
-    val updated = when (role) {
-      Role.STUDENT -> {
-        val programmes = catalog.catalogFor(old.universityId)
-        val prog = programme ?: old.programme ?: programmes.keys.firstOrNull()
-        old.copy(
-          role = Role.STUDENT,
-          status = AccountStatus.APPROVED,
-          programme = prog,
-          cohort = if (old.cohort.isNullOrBlank() || old.cohort == "Awaiting registry") "Year 1 • Semester 1" else old.cohort,
-          enrolledCourses = programmes[prog].orEmpty()
-        )
-      }
-      Role.LECTURER -> old.copy(
-        role = Role.LECTURER,
-        status = AccountStatus.APPROVED,
-        cohort = if (old.cohort.isNullOrBlank() || old.cohort == "Staff (awaiting role)") "Lecturer" else old.cohort,
-        teachesCourses = teaches,
-        enrolledCourses = emptySet()
-      )
-      // Administrator accounts are never created from this queue.
-      Role.ADMIN -> return null
-    }
-    putAccount(account.copy(profile = updated))
-    return updated
-  }
-
-  /** Replaces the courses a lecturer teaches. The caller has already checked who may do this. */
   fun setTeaching(userId: String, courses: Set<String>): UserProfile? {
     val account = _accounts.value[userId] ?: return null
     if (account.profile.role != Role.LECTURER) return null
@@ -713,83 +602,6 @@ class AuthRepository(
     return updated
   }
 
-  /** The app manager creates a campus together with its first administrator. */
-  fun createApprovedAdmin(
-    universityId: String,
-    fullName: String,
-    email: String,
-    staffNumber: String,
-    password: String
-  ): AuthError? {
-    val cleanEmail = normalizeEmail(email)
-    val number = staffNumber.trim()
-    if (fullName.trim().length < 3) return AuthError.NAME_REQUIRED
-    if (number.length < 2) return AuthError.NUMBER_INVALID
-    if (!EMAIL_REGEX.matches(cleanEmail)) return AuthError.EMAIL_INVALID
-    if (_accounts.value.values.any { it.profile.email.equals(cleanEmail, ignoreCase = true) }) return AuthError.EMAIL_TAKEN
-    if (!checkPassword(password, cleanEmail).acceptable) return AuthError.PASSWORD_WEAK
-    val profile = UserProfile(
-      id = "usr-" + UUID.randomUUID().toString().take(8),
-      fullName = fullName.trim(),
-      email = cleanEmail,
-      role = Role.ADMIN,
-      status = AccountStatus.APPROVED,
-      universityId = universityId,
-      staffNumber = number,
-      programme = "Registry",
-      cohort = "Campus administrator",
-      requestedRole = Role.ADMIN
-    )
-    val salt = UUID.randomUUID().toString()
-    putAccount(Account(profile, salt, hash(password, salt), emailVerified = true))
-    return null
-  }
-
-  /**
-   * An administrator (or the app manager) adds a person directly. The account is approved at once and
-   * the person signs in with the email and starting password they were given.
-   */
-  fun createApprovedUser(
-    universityId: String,
-    role: Role,
-    fullName: String,
-    email: String,
-    idNumber: String,
-    programme: String?,
-    password: String
-  ): AuthError? {
-    val cleanEmail = normalizeEmail(email)
-    val number = idNumber.trim()
-    if (fullName.trim().length < 3) return AuthError.NAME_REQUIRED
-    if (number.length < 2) return AuthError.NUMBER_INVALID
-    if (!EMAIL_REGEX.matches(cleanEmail)) return AuthError.EMAIL_INVALID
-    if (_accounts.value.values.any { it.profile.email.equals(cleanEmail, ignoreCase = true) }) return AuthError.EMAIL_TAKEN
-    if (role == Role.STUDENT && programme.isNullOrBlank()) return AuthError.PROGRAMME_REQUIRED
-    if (!checkPassword(password, cleanEmail).acceptable) return AuthError.PASSWORD_WEAK
-    val profile = UserProfile(
-      id = "usr-" + UUID.randomUUID().toString().take(8),
-      fullName = fullName.trim(),
-      email = cleanEmail,
-      role = role,
-      status = AccountStatus.APPROVED,
-      universityId = universityId,
-      studentNumber = if (role == Role.STUDENT) number else null,
-      staffNumber = if (role != Role.STUDENT) number else null,
-      programme = programme?.trim()?.ifBlank { null } ?: if (role == Role.ADMIN) "Registry" else null,
-      cohort = when (role) {
-        Role.ADMIN -> "Campus administrator"
-        Role.LECTURER -> "Lecturer"
-        Role.STUDENT -> null
-      },
-      requestedRole = role,
-      enrolledCourses = if (role == Role.STUDENT) catalog.catalogFor(universityId)[programme?.trim().orEmpty()].orEmpty() else emptySet()
-    )
-    val salt = UUID.randomUUID().toString()
-    putAccount(Account(profile, salt, hash(password, salt), emailVerified = true))
-    return null
-  }
-
-  /** A new course in a programme reaches the students already in that programme. */
   fun enrollProgramme(universityId: String, programme: String, courseCode: String) {
     _accounts.value = _accounts.value.mapValues { (_, account) ->
       val p = account.profile
@@ -801,36 +613,9 @@ class AuthRepository(
     }
   }
 
-  /** Removes the people of one campus (the app manager's delete). Returns how many were removed. */
-  fun removeAccountsOf(universityId: String, includeAdmins: Boolean): Int {
-    val doomed = _accounts.value.values
-      .filter { it.profile.universityId == universityId && (includeAdmins || it.profile.role != Role.ADMIN) }
-      .map { it.profile.id }
-      .toSet()
-    _accounts.value = _accounts.value - doomed
-    _devices.value = _devices.value - doomed
-    if (_session.value?.userId in doomed) _session.value = null
-    return doomed.size
-  }
-
-  fun reject(userId: String): UserProfile? {
-    val account = _accounts.value[userId] ?: return null
-    val updated = account.profile.copy(status = AccountStatus.REJECTED)
-    putAccount(account.copy(profile = updated))
-    removeAllDevices(userId)
-    return updated
-  }
-
-  // ---------- Internals ----------
-
   private fun removeDevice(userId: String, deviceId: String) {
     val list = _devices.value[userId].orEmpty().filterNot { it.id == deviceId }
     _devices.value = if (list.isEmpty()) _devices.value - userId else _devices.value + (userId to list)
-  }
-
-  private fun removeAllDevices(userId: String) {
-    _devices.value = _devices.value - userId
-    if (_session.value?.userId == userId) _session.value = null
   }
 
   private fun putAccount(account: Account) {
@@ -839,13 +624,7 @@ class AuthRepository(
 
   private fun normalizeEmail(raw: String) = raw.trim().lowercase()
 
-  private fun hash(password: String, salt: String): String {
-    val digest = MessageDigest.getInstance("SHA-256").digest((salt + password).toByteArray())
-    return digest.joinToString("") { "%02x".format(it) }
-  }
-
   private companion object {
-    // Any address that looks like an address. No domain is required.
     val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
   }
 }

@@ -6,14 +6,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** A student, lecturer or administrator as an administrator sees them. */
 data class ManagedPerson(
   val id: String,
   val name: String,
   val email: String,
-  /** "student", "lecturer" or "admin". */
   val role: String,
-  /** "approved", "pending", "suspended" or "rejected". */
   val status: String,
   val isClassRep: Boolean,
   val number: String,
@@ -26,7 +23,6 @@ data class ManagedPerson(
   val approved: Boolean get() = status == "approved"
 }
 
-/** An administrator of one campus, as the app manager sees them. */
 data class ManagedAdmin(
   val id: String,
   val name: String,
@@ -42,24 +38,16 @@ data class ManagedAdmin(
 
 data class ProgrammeRef(val id: String, val name: String)
 
-/** What anyone may know about the AI: on or off, which model. Never the key itself. */
 data class AiStatus(
   val enabled: Boolean = true,
   val provider: String = "gemini",
   val model: String = "",
   val hasKey: Boolean = false,
-  /** First and last characters of the key, shown to the app manager only. */
   val keyHint: String = ""
 )
 
-/** Result of one admin action. [code] is a short reason ("number_taken", "not_allowed", ...). */
 data class PeopleResult(val ok: Boolean, val code: String = "")
 
-/**
- * Everything an administrator does to people (create is in CampusRepository.addCampusUser),
- * and the app manager's AI settings. The DATABASE and the `admin-manage-user` function decide who
- * may do what; nothing here is trusted on its own.
- */
 class PeopleAdmin(private val remote: RemoteAdmin) {
 
   private val _people = MutableStateFlow<List<ManagedPerson>>(emptyList())
@@ -99,9 +87,6 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
 
   private fun done(r: RemoteResult) = if (r.ok) PeopleResult(true) else PeopleResult(false, codeOf(r))
 
-  // ---------- Lists ----------
-
-  /** The people of my campus (campus administrator). */
   suspend fun loadPeople(): Boolean {
     val r = remote.rpcCall("admin_list_people", JSONObject())
     if (!r.ok) return false
@@ -121,7 +106,6 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
     return true
   }
 
-  /** The programmes of my campus, with their ids (needed to move a student or change a role). */
   suspend fun loadProgrammes(universityUuid: String?): Boolean {
     val filter = if (universityUuid != null) "&university_id=eq.$universityUuid" else ""
     val rows = remote.query("programmes", "select=id,name$filter&order=name") ?: return false
@@ -131,7 +115,6 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
     return true
   }
 
-  /** The administrators of every campus (app manager). */
   suspend fun loadAdmins(): Boolean {
     val r = remote.rpcCall("platform_list_admins", JSONObject())
     if (!r.ok) return false
@@ -152,15 +135,12 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
     _people.value = emptyList(); _admins.value = emptyList(); _programmes.value = emptyList()
   }
 
-  // ---------- Actions on one person ----------
-
   suspend fun updatePerson(id: String, name: String, number: String, programmeId: String?, department: String?): PeopleResult {
     val args = JSONObject().put("p_user", id).put("p_full_name", name.trim()).put("p_number", number.trim())
       .put("p_programme", programmeId ?: JSONObject.NULL).put("p_department", department ?: JSONObject.NULL)
     return done(remote.rpcCall("admin_update_person", args)).also { if (it.ok) loadPeople() }
   }
 
-  /** [role] is "student" or "lecturer". A new student needs a programme. */
   suspend fun changeRole(id: String, role: String, number: String?, programmeId: String?): PeopleResult {
     val args = JSONObject().put("p_user", id).put("p_role", role)
       .put("p_number", number?.trim()?.ifBlank { null } ?: JSONObject.NULL)
@@ -179,6 +159,9 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
     done(remote.callFunction("admin-manage-user", JSONObject().put("action", if (pause) "pause" else "resume").put("user_id", id).put("reason", reason)))
       .also { if (it.ok) { loadPeople(); loadAdmins() } }
 
+  suspend fun erase(id: String): PeopleResult =
+    done(remote.callFunction("admin-manage-user", JSONObject().put("action", "erase").put("user_id", id)))
+
   suspend fun delete(id: String): PeopleResult =
     done(remote.callFunction("admin-manage-user", JSONObject().put("action", "delete").put("user_id", id)))
       .also { if (it.ok) { loadPeople(); loadAdmins() } }
@@ -186,24 +169,18 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
   suspend fun setClassRep(id: String, on: Boolean): PeopleResult =
     done(remote.rpcCall("set_class_rep", JSONObject().put("p_user", id).put("p_on", on))).also { if (it.ok) loadPeople() }
 
-  // ---------- Messages ----------
-
-  /** App manager to the administrators of one campus. Returns how many were notified, or -1 on failure. */
   suspend fun messageCampusAdmins(universityUuid: String, title: String, message: String, urgent: Boolean): Pair<Int, String> {
     val r = remote.rpcCall("platform_notify_campus_admins",
       JSONObject().put("p_university", universityUuid).put("p_title", title).put("p_message", message).put("p_urgent", urgent))
     return if (r.ok) (r.body.trim().toIntOrNull() ?: 0) to "" else -1 to codeOf(r)
   }
 
-  /** Campus administrator to people of the own campus. [audience]: all, students, lecturers, reps, programme. */
   suspend fun messagePeople(audience: String, programmeId: String?, title: String, message: String, urgent: Boolean): Pair<Int, String> {
     val r = remote.rpcCall("admin_notify_people",
       JSONObject().put("p_audience", audience).put("p_programme", programmeId ?: JSONObject.NULL)
         .put("p_title", title).put("p_message", message).put("p_urgent", urgent))
     return if (r.ok) (r.body.trim().toIntOrNull() ?: 0) to "" else -1 to codeOf(r)
   }
-
-  // ---------- AI settings ----------
 
   suspend fun loadAiStatus(): Boolean {
     val r = remote.rpcCall("ai_status", JSONObject())
@@ -216,7 +193,6 @@ class PeopleAdmin(private val remote: RemoteAdmin) {
     return true
   }
 
-  /** An empty [apiKey] keeps the key that is already saved. */
   suspend fun saveAi(provider: String, model: String, apiKey: String, enabled: Boolean): PeopleResult {
     val args = JSONObject().put("p_provider", provider).put("p_model", model).put("p_api_key", apiKey.trim()).put("p_enabled", enabled)
     return done(remote.rpcCall("platform_set_ai_settings", args)).also { if (it.ok) loadAiStatus() }

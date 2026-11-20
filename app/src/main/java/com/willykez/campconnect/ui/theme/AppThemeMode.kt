@@ -5,7 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/** App-wide theme preference. Stored locally; System mode follows Android's appearance setting. */
 enum class AppThemeMode { SYSTEM, LIGHT, DARK }
 
 object AppThemeSettings {

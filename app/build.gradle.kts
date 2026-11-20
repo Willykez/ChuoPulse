@@ -1,21 +1,15 @@
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
 }
 
-// One opt-in for the whole module, so @OptIn(ExperimentalMaterial3Api::class) is not needed anywhere.
 kotlin {
   compilerOptions {
     freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
   }
 }
 
-// ---- Build settings: Gradle property > environment variable (CI) > .env file > default ----
 val dotEnv: Map<String, String> = rootProject.file(".env").takeIf { it.exists() }
   ?.readLines()
   ?.map { it.trim() }
@@ -87,7 +81,7 @@ android {
       isCrunchPngs = true
       isMinifyEnabled = true
       isShrinkResources = true
-      
+
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
         "proguard-rules.pro"
@@ -102,8 +96,6 @@ android {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
 
-    // The build used for testing on phones: minified and shrunk exactly like release, but signed
-    // with the temporary key so it installs without your upload key.
     create("staging") {
       initWith(getByName("release"))
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -142,55 +134,28 @@ android {
   }
 }
 
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-  ignoreList.add("SUPABASE_URL")
-  ignoreList.add("SUPABASE_ANON_KEY")
-}
-
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
-
 dependencies {
   coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.graphics)
-  implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.mlkit.text.recognition)
-  implementation(libs.androidx.lifecycle.runtime.compose)
-  implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
-  implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  implementation(libs.retrofit)
-
-  debugImplementation(libs.androidx.compose.ui.tooling)
 
   "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
 }
 
-// Configuration-Cache compatible verification task
 val liveUrlProvider = providers.gradleProperty("SUPABASE_URL")
   .orElse(providers.environmentVariable("SUPABASE_URL"))
   .orElse(provider { dotEnv["SUPABASE_URL"] ?: "" })

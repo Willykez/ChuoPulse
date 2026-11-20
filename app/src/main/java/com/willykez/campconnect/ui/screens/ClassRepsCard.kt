@@ -33,11 +33,6 @@ import com.willykez.campconnect.ui.components.AppBottomSheet
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/**
- * Class representatives. Administrators and lecturers choose them; a representative sees a badge here.
- * A representative may post notices, materials, assignments and timetable changes for their own class
- * (never quizzes, never other students' work).
- */
 @Composable
 fun ClassRepsCard(viewModel: CampusViewModel, user: UserProfile) {
   if (user.status != AccountStatus.APPROVED || user.isPlatformAdmin) return

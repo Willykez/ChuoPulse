@@ -15,7 +15,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api          // ← ADDED
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -181,7 +181,7 @@ fun GradeSubmissionDialog(
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Text(
-      text = "Submitted: ${submission.submittedAt}",
+      text = "Submitted: ${submission.submittedAt}${if (submission.isLate) " • Late" else ""}",
       style = MaterialTheme.typography.labelSmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )

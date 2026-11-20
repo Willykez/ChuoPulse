@@ -23,7 +23,6 @@ import com.willykez.campconnect.data.model.ClassSession
 import com.willykez.campconnect.data.model.ContentApprovalStatus
 import com.willykez.campconnect.data.model.DeadlineItem
 import com.willykez.campconnect.data.model.NotificationItem
-import com.willykez.campconnect.data.model.NotificationType
 import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.data.model.SessionStatus
 import com.willykez.campconnect.data.model.StudentSubmission
@@ -51,7 +50,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-/** One place a message can be sent to, offered in the publish dialog. */
 data class AudienceOption(
   val label: String,
   val type: AudienceType,
@@ -59,7 +57,6 @@ data class AudienceOption(
   val code: String
 )
 
-/** Why a post was refused. The screen turns this into English or Kiswahili text. */
 enum class PostError {
   NOT_ALLOWED,
   CAMPUS_REGISTRY_ONLY,
@@ -69,16 +66,12 @@ enum class PostError {
   RESPONSIBLE_NOT_FOR_COURSE
 }
 
-/** Why a class could not be scheduled. The screen turns this into words. */
-/** Why the registry could not change who teaches a course. */
 enum class AssignLecturersError { NOT_ALLOWED, UNKNOWN_COURSE, NOT_A_LECTURER, HAS_CLASSES }
 
-/** [error] is null when the change was saved; [names] lists the lecturers blocking it (HAS_CLASSES). */
 data class AssignLecturersResult(val error: AssignLecturersError? = null, val names: String = "")
 
 enum class SessionError { NOT_ALLOWED, UNKNOWN_COURSE, LECTURER_NOT_FOR_COURSE, TIME_INVALID, ROOM_REQUIRED, ROOM_BUSY, LECTURER_BUSY }
 
-/** A room and, if it is taken at the chosen time, by which course. */
 data class RoomOption(val name: String, val busyWith: String?)
 
 enum class PlatformError { NOT_ALLOWED, CAMPUS_EXISTS, DETAILS_MISSING, FAILED }
@@ -90,7 +83,6 @@ data class PlatformResult(
   val authError: com.willykez.campconnect.data.auth.AuthError? = null
 )
 
-/** What the app manager sees about a campus: totals only, never the content itself. */
 data class CampusSummary(
   val university: com.willykez.campconnect.data.model.University,
   val people: Int,
@@ -108,17 +100,12 @@ data class CampusSummary(
 class CampusRepository {
 
   companion object {
-    /** Answers still on the screen when the timer ends are accepted for this long. */
     const val SUBMIT_GRACE_MS = 10_000L
-    /** Most Urgent notices one lecturer may send in a day. Keeps "Urgent" meaningful. */
     const val DAILY_URGENT_LIMIT = 2
   }
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
-  // ---------- Who is using the app ----------
-
-  /** Programmes, courses, rooms and campuses. Each campus administrator fills in their own. */
   val catalog = CampusCatalog()
 
   val auth = AuthRepository(catalog)
@@ -133,12 +120,9 @@ class CampusRepository {
     status = AccountStatus.PENDING
   )
 
-  /** The active person. It always comes from the account record, so nothing on the phone can change a role. */
   val currentUser: StateFlow<UserProfile> = combine(auth.session, auth.accounts) { s, accounts ->
     if (s == null) signedOutPlaceholder else accounts[s.userId]?.profile ?: signedOutPlaceholder
   }.stateIn(scope, SharingStarted.Eagerly, signedOutPlaceholder)
-
-  // ---------- Preferences and sync ----------
 
   private val _appLanguage = MutableStateFlow(AppLanguage.ENGLISH)
   val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
@@ -146,14 +130,12 @@ class CampusRepository {
   private val _isOffline = MutableStateFlow(false)
   val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
-  /** Epoch millis of the last successful sync, or 0 when this phone holds no synced data. */
   private val _lastSyncedAt = MutableStateFlow(System.currentTimeMillis())
   val lastSyncedAt: StateFlow<Long> = _lastSyncedAt.asStateFlow()
 
   private val _is24HourFormat = MutableStateFlow(true)
   val is24HourFormat: StateFlow<Boolean> = _is24HourFormat.asStateFlow()
 
-  // Timetable
   private val _sessions = MutableStateFlow<List<ClassSession>>(emptyList())
 
   private val _announcements = MutableStateFlow<List<Announcement>>(emptyList())
@@ -164,28 +146,18 @@ class CampusRepository {
 
   private val _submissions = MutableStateFlow<List<StudentSubmission>>(emptyList())
 
-  // Notifications (personal: each item belongs to one person)
   private val _notifications = MutableStateFlow<List<NotificationItem>>(emptyList())
 
-  // Audit log
   private val _auditLogs = MutableStateFlow<List<AuditLog>>(emptyList())
 
-  // ---------- Per-person state (private to each person) ----------
-
-  // Who opened which announcement: announcementId -> students. A student only ever sees their own.
   private val _readReceipts = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
   private val _remindedAnnouncements = MutableStateFlow<Set<String>>(emptySet())
   val remindedAnnouncements: StateFlow<Set<String>> = _remindedAnnouncements.asStateFlow()
 
-  // "Done" ticks are private: userId -> deadline ids. No lecturer or administrator can read them.
   private val _doneTicks = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
 
-  // Offline copies kept on this phone, per person: userId -> material ids.
   private val _downloads = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
-
-  // ---------- What each person is allowed to see ----------
-  // Every list the screens read is filtered for the signed-in person right here.
 
   val sessions: StateFlow<List<ClassSession>> = combine(_sessions, currentUser) { list, user ->
     list.filter { canSeeSession(it, user) }
@@ -222,13 +194,10 @@ class CampusRepository {
     list.filter { it.userId == user.id }
   }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-  // Only administrators can read the audit log. Nothing in the app edits or erases an entry.
   val auditLogs: StateFlow<List<AuditLog>> = combine(_auditLogs, currentUser) { list, user ->
     if (user.role == Role.ADMIN) list.filter { it.universityId == user.universityId } else emptyList()
   }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-  // Accounts waiting for the Academic Registry. Only people who proved their email appear here.
-  // Each university's administrator sees only the people waiting to join that university.
   val pendingUsers: StateFlow<List<UserProfile>> = combine(auth.accounts, currentUser) { accounts, user ->
       accounts.values
         .filter { it.profile.status == AccountStatus.PENDING && it.emailVerified && it.profile.universityId == user.universityId }
@@ -236,20 +205,14 @@ class CampusRepository {
     }
     .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-  // ---------- Who may see what ----------
-
   private fun baseCourse(code: String): String = code.substringBefore('-')
 
   private fun isActive(user: UserProfile) = user.status == AccountStatus.APPROVED
 
-  /** The university a person belongs to. Content belongs to the university of whoever made it. */
   private fun universityOf(userId: String): String =
     auth.accounts.value[userId]?.profile?.universityId ?: ""
 
-  /** Everything stays inside one campus: nobody sees another university's data. */
   private fun sameCampus(ownerId: String, user: UserProfile): Boolean {
-    // The server only sends rows of the person's own campus. A person this phone has no profile for
-    // (a lecturer, as seen by a student) is therefore on the same campus.
     val owner = auth.accounts.value[ownerId]?.profile?.universityId ?: return true
     return owner == user.universityId
   }
@@ -271,7 +234,7 @@ class CampusRepository {
     if (!isActive(user)) return false
     if (!sameCampus(a.authorId, user)) return false
     if (user.role == Role.ADMIN) return true
-    if (a.authorId == user.id) return true // authors keep sight of their own, drafts and retracted included
+    if (a.authorId == user.id) return true
     if (a.approvalStatus != ContentApprovalStatus.APPROVED || a.isRetracted) return false
     return when (a.audienceType) {
       AudienceType.CAMPUS -> true
@@ -319,13 +282,11 @@ class CampusRepository {
     if (!isActive(user)) return false
     if (!sameCampus(s.studentId, user)) return false
     return when (user.role) {
-      Role.STUDENT -> s.studentId == user.id // never another student's work
+      Role.STUDENT -> s.studentId == user.id
       Role.LECTURER -> baseCourse(s.courseCode) in user.teachesCourses
       Role.ADMIN -> true
     }
   }
-
-  // ---------- Recipients ----------
 
   private fun activeProfiles(): List<UserProfile> =
     auth.accounts.value.values.map { it.profile }
@@ -340,44 +301,18 @@ class CampusRepository {
     AudienceType.COURSE -> courseStudentIds(code)
   }
 
-  private fun notifyUsers(userIds: Collection<String>, title: String, message: String, type: NotificationType) {
-    val ids = userIds.distinct()
-    if (ids.isEmpty()) return
-    val items = ids.map {
-      NotificationItem(
-        id = "notif-" + UUID.randomUUID().toString().take(8),
-        userId = it,
-        title = title,
-        message = message,
-        type = type,
-        timestamp = "Just now",
-        isRead = false
-      )
-    }
-    _notifications.value = items + _notifications.value
-  }
-
   init {
-    // New-device notices from the sign-in layer land in the person's own notifications.
-    auth.onNotify = { userId, title, message ->
-      notifyUsers(listOf(userId), title, message, NotificationType.APPROVAL)
-    }
-    // Signing in counts as a fresh sync.
     scope.launch {
       auth.session.collect { s -> if (s != null) _lastSyncedAt.value = System.currentTimeMillis() }
     }
   }
 
-  // ---------- Permission checks ----------
-
-  // Admin can edit/delete anything. Everyone else only what they authored or uploaded.
   fun canEditOrDelete(uploaderOrAuthorId: String): Boolean {
     val user = currentUser.value
     if (!isActive(user)) return false
     return user.role == Role.ADMIN || user.id == uploaderOrAuthorId
   }
 
-  /** A class representative may change timetable sessions of the courses of their own class. */
   fun canEditSession(s: ClassSession): Boolean {
     val user = currentUser.value
     if (!isActive(user)) return false
@@ -390,7 +325,6 @@ class CampusRepository {
     return isActive(user) && user.role == Role.ADMIN
   }
 
-  /** Where the current person may post, offered as choices in the publish dialog. */
   fun audienceOptions(): List<AudienceOption> {
     val user = currentUser.value
     if (!isActive(user)) return emptyList()
@@ -440,8 +374,6 @@ class CampusRepository {
 
   private fun urgentSentToday(userId: String): Int = urgentCounts[todayKey(userId)] ?: 0
 
-  // ---------- Preferences ----------
-
   fun setLanguage(language: AppLanguage) {
     _appLanguage.value = language
   }
@@ -458,8 +390,6 @@ class CampusRepository {
   fun triggerSync() {
     syncNow()
   }
-
-  // ---------- Sessions ----------
 
   fun signOut() {
     wipeLocalCopies(currentUser.value.id)
@@ -478,11 +408,9 @@ class CampusRepository {
     auth.signOutDevice(id, deviceId)
   }
 
-  /** Removes what this phone keeps for the person: offline copies and the sync stamp. */
   private fun wipeLocalCopies(userId: String) {
     _downloads.value = _downloads.value - userId
     _lastSyncedAt.value = 0L
-    // The next person to sign in on this phone must not see this person's content.
     _sessions.value = emptyList(); _announcements.value = emptyList(); _materials.value = emptyList()
     _deadlines.value = emptyList(); _submissions.value = emptyList(); _notifications.value = emptyList()
     _readReceipts.value = emptyMap(); _doneTicks.value = emptyMap()
@@ -491,11 +419,9 @@ class CampusRepository {
     CloudFiles.clear()
   }
 
-  // ---------- Reading and ticking (always personal) ----------
-
   fun markAnnouncementRead(id: String) {
     val user = currentUser.value
-    if (user.role != Role.STUDENT || !isActive(user)) return // only students' reads are counted
+    if (user.role != Role.STUDENT || !isActive(user)) return
     val readers = _readReceipts.value[id].orEmpty()
     if (user.id in readers) return
     _readReceipts.value = _readReceipts.value + (id to (readers + user.id))
@@ -529,11 +455,9 @@ class CampusRepository {
     val uid = currentUser.value.id
     _notifications.value = _notifications.value.map { if (it.userId == uid) it.copy(isRead = true) else it }
     push(refresh = false, silent = true) {
-      remote.patchRows("notifications", "user_id=eq.$uid&is_read=eq.false", JSONObject().put("is_read", true))
+      remote.rpcCall("mark_all_notifications_read", JSONObject())
     }
   }
-
-  // ---------- Student work ----------
 
   fun submitStudentWork(
     deadlineId: String,
@@ -568,16 +492,6 @@ class CampusRepository {
     }
     _doneTicks.value = _doneTicks.value + (student.id to (_doneTicks.value[student.id].orEmpty() + deadlineId))
 
-    notifyUsers(
-      listOf(deadline.lecturerId),
-      "Work submitted: $courseCode",
-      "${student.fullName} submitted $assignmentTitle.",
-      NotificationType.SUBMISSION_RECEIVED
-    )
-    recordAudit(
-      action = "WORK_SUBMITTED",
-      details = "${student.fullName} submitted work for $courseCode ($assignmentTitle) [${attachment.fileName}]"
-    )
     if (isUuid(deadlineId)) push {
       val up = uploadPicked("submissions", "${student.id}/$deadlineId", attachment) ?: return@push RemoteResult(true)
       remote.insertRow("submissions", JSONObject()
@@ -595,13 +509,6 @@ class CampusRepository {
     _submissions.value = _submissions.value.map { sub ->
       if (sub.id == submissionId) sub.copy(grade = grade, feedback = feedback, approvalStatus = ContentApprovalStatus.APPROVED) else sub
     }
-    notifyUsers(
-      listOf(existing.studentId),
-      "Assignment Graded: ${existing.courseCode}",
-      "${actor.fullName} posted your grade ($grade) for ${existing.assignmentTitle}",
-      NotificationType.GRADE_POSTED
-    )
-    recordAudit(action = "WORK_GRADED", details = "Graded submission $submissionId with grade: $grade")
     if (isUuid(submissionId)) push {
       remote.patchRows("submissions", "id=eq.$submissionId", JSONObject().put("grade", grade).put("feedback", feedback))
     }
@@ -611,13 +518,9 @@ class CampusRepository {
     val sub = _submissions.value.find { it.id == submissionId } ?: return
     if (!canEditOrDelete(sub.studentId)) return
     _submissions.value = _submissions.value.filter { it.id != submissionId }
-    recordAudit(action = "SUBMISSION_DELETED", details = "Deleted submission ${sub.assignmentTitle} by ${sub.studentName}")
     if (isUuid(submissionId)) push { remote.deleteRows("submissions", "id=eq.$submissionId") }
   }
 
-  // ---------- Announcements ----------
-
-  /** Returns null when posted, or the reason it was refused. */
   fun publishAnnouncement(
     title: String,
     body: String,
@@ -633,27 +536,22 @@ class CampusRepository {
     if (!isActive(author) || (author.role == Role.STUDENT && !rep)) return PostError.NOT_ALLOWED
     if (rep && priority == AnnouncementPriority.URGENT) return PostError.URGENT_NOT_ALLOWED
 
-    // 1. Audience rules: only the registry may speak to the whole campus.
     when (audienceType) {
       AudienceType.CAMPUS -> if (author.role != Role.ADMIN) {
-        recordAudit("POST_BLOCKED", "${author.fullName} tried to post campus-wide: '$title'")
         return PostError.CAMPUS_REGISTRY_ONLY
       }
       AudienceType.COURSE -> if ((author.role == Role.LECTURER && audienceCode !in author.teachesCourses) ||
         (rep && audienceCode !in author.enrolledCourses)) {
-        recordAudit("POST_BLOCKED", "${author.fullName} tried to post to course $audienceCode they do not teach: '$title'")
         return PostError.AUDIENCE_NOT_YOURS
       }
       AudienceType.PROGRAMME -> if ((author.role == Role.LECTURER &&
         author.teachesCourses.none { it in catalog.catalogFor(author.universityId)[audienceCode].orEmpty() }) ||
         (rep && audienceCode != author.programme)
       ) {
-        recordAudit("POST_BLOCKED", "${author.fullName} tried to post to programme $audienceCode: '$title'")
         return PostError.AUDIENCE_NOT_YOURS
       }
     }
 
-    // The notice can be on behalf of a lecturer who teaches that course.
     var responsible: UserProfile? = null
     if (responsibleLecturerId != null && responsibleLecturerId != author.id) {
       responsible = auth.accounts.value[responsibleLecturerId]?.profile
@@ -663,14 +561,11 @@ class CampusRepository {
       if (!valid) return PostError.RESPONSIBLE_NOT_FOR_COURSE
     }
 
-    // 2. Urgent is rationed: registry freely, lecturers for their own course with a daily limit.
     if (priority == AnnouncementPriority.URGENT && author.role == Role.LECTURER) {
       if (audienceType != AudienceType.COURSE) {
-        recordAudit("URGENT_BLOCKED", "${author.fullName} tried to mark a non-course notice Urgent: '$title'")
         return PostError.URGENT_NOT_ALLOWED
       }
       if (urgentSentToday(author.id) >= DAILY_URGENT_LIMIT) {
-        recordAudit("URGENT_BLOCKED", "${author.fullName} reached the daily Urgent limit: '$title'")
         return PostError.URGENT_LIMIT_REACHED
       }
     }
@@ -678,7 +573,6 @@ class CampusRepository {
       urgentCounts[todayKey(author.id)] = urgentSentToday(author.id) + 1
     }
 
-    val recipients = audienceRecipientIds(audienceType, audienceCode).filter { it != author.id }
     val newAnn = Announcement(
       id = "ann-" + UUID.randomUUID().toString().take(6),
       authorId = author.id,
@@ -702,14 +596,6 @@ class CampusRepository {
       approvalStatus = ContentApprovalStatus.APPROVED
     )
     _announcements.value = listOf(newAnn) + _announcements.value
-
-    val prefix = when (priority) {
-      AnnouncementPriority.URGENT -> "Urgent: "
-      AnnouncementPriority.ACADEMIC -> ""
-      AnnouncementPriority.NORMAL -> ""
-    }
-    notifyUsers(recipients, "$prefix$title", "${author.fullName} published a notice for $audienceName.", NotificationType.ANNOUNCEMENT)
-    recordAudit("ANNOUNCEMENT_POSTED", "Published announcement '$title' to $audienceName (${priority.name})")
     push {
       val row = JSONObject().put("author_id", author.id).put("title", title.trim()).put("body", body.trim())
         .put("audience", audienceType.name.lowercase()).put("priority", priority.name.lowercase())
@@ -732,13 +618,11 @@ class CampusRepository {
     val ann = _announcements.value.find { it.id == id } ?: return
     if (!canEditOrDelete(ann.authorId)) return
     val author = currentUser.value
-    // Editing may not be used to slip past the Urgent rules.
     if (newPriority == AnnouncementPriority.URGENT && ann.priority != AnnouncementPriority.URGENT && author.role != Role.ADMIN) return
 
     _announcements.value = _announcements.value.map {
       if (it.id == id) it.copy(title = newTitle, body = newBody, priority = newPriority) else it
     }
-    recordAudit("ANNOUNCEMENT_EDITED", "Edited announcement '$newTitle'")
     if (isUuid(id)) push {
       remote.patchRows("announcements", "id=eq.$id", JSONObject().put("title", newTitle.trim()).put("body", newBody.trim()).put("priority", newPriority.name.lowercase()))
     }
@@ -749,39 +633,26 @@ class CampusRepository {
     if (!canEditOrDelete(ann.authorId)) return
     _announcements.value = _announcements.value.filter { it.id != id }
     _readReceipts.value = _readReceipts.value - id
-    recordAudit("ANNOUNCEMENT_DELETED", "Deleted announcement '${ann.title}'")
     if (isUuid(id)) push { remote.deleteRows("announcements", "id=eq.$id") }
   }
 
-  /** Posted to the wrong class? It disappears for everyone and a short Correction goes out. */
   fun retractAnnouncement(id: String): Boolean {
     val ann = _announcements.value.find { it.id == id } ?: return false
     if (!canEditOrDelete(ann.authorId) || ann.isRetracted) return false
     val actor = currentUser.value
 
     _announcements.value = _announcements.value.map { if (it.id == id) it.copy(isRetracted = true) else it }
-    val recipients = audienceRecipientIds(ann.audienceType, ann.audienceCode).filter { it != ann.authorId }
-    notifyUsers(
-      recipients,
-      "Correction: notice withdrawn",
-      "\"${ann.title}\" was withdrawn by ${actor.fullName}. Please disregard it.",
-      NotificationType.ANNOUNCEMENT
-    )
-    recordAudit("ANNOUNCEMENT_RETRACTED", "Retracted announcement '${ann.title}'")
     if (isUuid(id)) push { remote.rpcCall("retract_announcement", JSONObject().put("p_id", id)) }
     return true
   }
 
-  /** One gentle nudge to the people in the audience who have not opened the notice. Returns how many. */
   fun remindUnread(id: String): Int {
     val ann = _announcements.value.find { it.id == id } ?: return 0
     if (!canEditOrDelete(ann.authorId) || ann.isRetracted || id in _remindedAnnouncements.value) return 0
     val readers = _readReceipts.value[id].orEmpty()
     val targets = audienceRecipientIds(ann.audienceType, ann.audienceCode)
       .filter { it !in readers && it != ann.authorId }
-    notifyUsers(targets, "Reminder: ${ann.title}", "You have not opened this notice yet.", NotificationType.ANNOUNCEMENT)
     _remindedAnnouncements.value = _remindedAnnouncements.value + id
-    recordAudit("ANNOUNCEMENT_REMINDER", "Reminded ${targets.size} people about '${ann.title}'")
     if (isUuid(id)) push { remote.rpcCall("remind_unread", JSONObject().put("p_id", id)) }
     return targets.size
   }
@@ -789,13 +660,9 @@ class CampusRepository {
   fun setAnnouncementApproval(id: String, status: ContentApprovalStatus) {
     if (!canApproveOrDisapprove()) return
     _announcements.value = _announcements.value.map { if (it.id == id) it.copy(approvalStatus = status) else it }
-    recordAudit("CONTENT_APPROVAL_CHANGED", "Admin set announcement $id status to ${status.name}")
     if (isUuid(id)) push { remote.patchRows("announcements", "id=eq.$id", JSONObject().put("approval", CloudSync.approvalText(status))) }
   }
 
-  // ---------- Study materials ----------
-
-  /** Returns false when the person does not teach that course. */
   fun uploadMaterial(
     title: String,
     courseCode: String,
@@ -825,8 +692,6 @@ class CampusRepository {
     _materials.value = listOf(newMat) + _materials.value
     _downloads.value = _downloads.value + (author.id to (_downloads.value[author.id].orEmpty() + newMat.id))
 
-    notifyUsers(courseStudentIds(courseCode), "New material: $courseCode", "${author.fullName} shared '$title' (${attachment.fileSize}).", NotificationType.ANNOUNCEMENT)
-    recordAudit("MATERIAL_UPLOAD", "Uploaded '$title' for $courseCode (${attachment.fileName})")
     push {
       val full = serverCourse(baseCourse(courseCode))
       val up = uploadPicked("materials", "$full/${author.id}", attachment) ?: return@push RemoteResult(true)
@@ -842,7 +707,6 @@ class CampusRepository {
     val mat = _materials.value.find { it.id == id } ?: return
     if (!canEditOrDelete(mat.uploaderId)) return
     _materials.value = _materials.value.map { if (it.id == id) it.copy(title = newTitle, description = newDescription) else it }
-    recordAudit("MATERIAL_EDITED", "Edited study material '$newTitle'")
     if (isUuid(id)) push { remote.patchRows("study_materials", "id=eq.$id", JSONObject().put("title", newTitle.trim()).put("description", newDescription)) }
   }
 
@@ -850,18 +714,14 @@ class CampusRepository {
     val mat = _materials.value.find { it.id == id } ?: return
     if (!canEditOrDelete(mat.uploaderId)) return
     _materials.value = _materials.value.filter { it.id != id }
-    recordAudit("MATERIAL_DELETED", "Deleted study material '${mat.title}'")
     if (isUuid(id)) push { remote.deleteRows("study_materials", "id=eq.$id") }
   }
 
   fun setMaterialApproval(id: String, status: ContentApprovalStatus) {
     if (!canApproveOrDisapprove()) return
     _materials.value = _materials.value.map { if (it.id == id) it.copy(approvalStatus = status) else it }
-    recordAudit("MATERIAL_APPROVAL_CHANGED", "Admin set material $id status to ${status.name}")
     if (isUuid(id)) push { remote.patchRows("study_materials", "id=eq.$id", JSONObject().put("approval", CloudSync.approvalText(status))) }
   }
-
-  // ---------- Timetable ----------
 
   fun updateSessionVenue(sessionId: String, newVenue: String, reason: String) {
     val sess = _sessions.value.find { it.id == sessionId } ?: return
@@ -872,14 +732,6 @@ class CampusRepository {
         s.copy(venue = newVenue, originalVenue = s.originalVenue ?: s.venue, status = SessionStatus.CHANGED, changeReason = reason)
       } else s
     }
-    // Only the people enrolled in this course hear about it.
-    notifyUsers(
-      courseStudentIds(sess.courseCode),
-      "Room changed: ${sess.courseCode}",
-      "$newVenue, ${sess.startTime}. Reason: $reason",
-      NotificationType.TIMETABLE_CHANGE
-    )
-    recordAudit("VENUE_CHANGE", "Updated ${sess.courseCode} venue to $newVenue ($reason)")
     if (isUuid(sessionId)) push { remote.patchRows("class_sessions", "id=eq.$sessionId", JSONObject().put("venue", newVenue.trim()).put("change_reason", reason)) }
   }
 
@@ -890,13 +742,6 @@ class CampusRepository {
     _sessions.value = _sessions.value.map { s ->
       if (s.id == sessionId) s.copy(status = SessionStatus.CANCELLED, changeReason = reason) else s
     }
-    notifyUsers(
-      courseStudentIds(sess.courseCode),
-      "Cancelled: ${sess.courseCode}",
-      "${sess.startTime} class was cancelled. Reason: $reason",
-      NotificationType.TIMETABLE_CHANGE
-    )
-    recordAudit("SESSION_CANCELLED", "Cancelled ${sess.courseCode} session ($reason)")
     if (isUuid(sessionId)) push { remote.patchRows("class_sessions", "id=eq.$sessionId", JSONObject().put("status", "cancelled").put("change_reason", reason)) }
   }
 
@@ -906,7 +751,6 @@ class CampusRepository {
     _sessions.value = _sessions.value.map { s ->
       if (s.id == sessionId) s.copy(status = SessionStatus.SCHEDULED, changeReason = null, venue = s.originalVenue ?: s.venue) else s
     }
-    recordAudit("SESSION_RESTORED", "Restored ${sess.courseCode} session")
     if (isUuid(sessionId)) push {
       remote.patchRows("class_sessions", "id=eq.$sessionId", JSONObject()
         .put("status", "scheduled").put("change_reason", JSONObject.NULL).put("venue", sess.originalVenue ?: sess.venue))
@@ -917,20 +761,15 @@ class CampusRepository {
     val sess = _sessions.value.find { it.id == sessionId } ?: return
     if (!canEditSession(sess)) return
     _sessions.value = _sessions.value.filter { it.id != sessionId }
-    recordAudit("SESSION_DELETED", "Deleted timetable session ${sess.courseCode} (${sess.venue})")
     if (isUuid(sessionId)) push { remote.deleteRows("class_sessions", "id=eq.$sessionId") }
   }
 
   fun setSessionApproval(sessionId: String, status: ContentApprovalStatus) {
     if (!canApproveOrDisapprove()) return
     _sessions.value = _sessions.value.map { if (it.id == sessionId) it.copy(approvalStatus = status) else it }
-    recordAudit("SESSION_APPROVAL_CHANGED", "Admin set session $sessionId status to ${status.name}")
     if (isUuid(sessionId)) push { remote.patchRows("class_sessions", "id=eq.$sessionId", JSONObject().put("approval", CloudSync.approvalText(status))) }
   }
 
-  // ---------- Deadlines ----------
-
-  /** Returns false when the person does not teach that course. */
   fun addDeadline(
     courseCode: String,
     courseTitle: String,
@@ -965,8 +804,6 @@ class CampusRepository {
     )
     _deadlines.value = listOf(newDl) + _deadlines.value
 
-    notifyUsers(courseStudentIds(courseCode), "New Deadline: $courseCode", "$title due on $dueDateTime", NotificationType.DEADLINE_ALERT)
-    recordAudit("DEADLINE_CREATED", "Created deadline '$title' for $courseCode due $dueDateTime")
     push {
       val due = DeadlineTime.parse(dueDateTime) ?: return@push RemoteResult(false, RemoteError.BAD_DETAILS)
       val row = JSONObject().put("lecturer_id", author.id).put("title", title.trim()).put("instructions", instructions)
@@ -977,7 +814,6 @@ class CampusRepository {
     return true
   }
 
-  /** Edits or reschedules a deadline. Only the lecturer who set it, or an administrator, may do this. */
   fun updateDeadline(
     id: String,
     newTitle: String,
@@ -1003,11 +839,8 @@ class CampusRepository {
       )
     }
     if (newDueDateTime != dl.dueDateTime) {
-      notifyUsers(courseStudentIds(dl.courseCode), "Deadline moved: ${dl.courseCode}", "$newTitle is now due $newDueDateTime", NotificationType.DEADLINE_ALERT)
     } else if (newTitle != dl.title || newInstructions != dl.instructions) {
-      notifyUsers(courseStudentIds(dl.courseCode), "Assignment updated: ${dl.courseCode}", "$newTitle was changed. Check the instructions.", NotificationType.DEADLINE_ALERT)
     }
-    recordAudit("DEADLINE_EDITED", "Edited deadline '$newTitle' (due ${newDueDateTime})")
     if (isUuid(id)) push {
       val ch = JSONObject().put("title", newTitle.trim()).put("instructions", newInstructions)
       DeadlineTime.parse(newDueDateTime)?.let { ch.put("due_at", CloudSync.isoOf(it)) }
@@ -1020,28 +853,22 @@ class CampusRepository {
     val dl = _deadlines.value.find { it.id == id } ?: return
     if (!canEditOrDelete(dl.lecturerId)) return
     _deadlines.value = _deadlines.value.filter { it.id != id }
-    recordAudit("DEADLINE_DELETED", "Deleted deadline '${dl.title}'")
     if (isUuid(id)) push { remote.deleteRows("deadlines", "id=eq.$id") }
   }
 
   fun setDeadlineApproval(id: String, status: ContentApprovalStatus) {
     if (!canApproveOrDisapprove()) return
     _deadlines.value = _deadlines.value.map { if (it.id == id) it.copy(approvalStatus = status) else it }
-    recordAudit("DEADLINE_APPROVAL_CHANGED", "Admin set deadline $id status to ${status.name}")
     if (isUuid(id)) push { remote.patchRows("deadlines", "id=eq.$id", JSONObject().put("approval", CloudSync.approvalText(status))) }
   }
-
-  // ---------- E-learning: timed quizzes ----------
 
   private val _quizzes = MutableStateFlow<List<Quiz>>(emptyList())
   private val _attempts = MutableStateFlow<List<QuizAttempt>>(emptyList())
 
-  /** Quizzes this person may see. Students get the questions only, never the answers. */
   val quizzes: StateFlow<List<Quiz>> = combine(_quizzes, currentUser) { list, user ->
     list.filter { canSeeQuiz(it, user) }.map { if (user.role == Role.STUDENT) it.withoutAnswers() else it }
   }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-  /** Attempts this person may see: a student's own; a lecturer's for their quizzes; the campus for an administrator. */
   val attempts: StateFlow<List<QuizAttempt>> = combine(_attempts, _quizzes, currentUser) { list, quizList, user ->
     list.filter { a -> quizList.firstOrNull { it.id == a.quizId }?.let { canSeeAttempt(a, it, user) } ?: false }
   }.stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -1067,7 +894,6 @@ class CampusRepository {
   private fun validateWindow(durationMinutes: Int, opensAt: Long, closesAt: Long, now: Long): QuizError? = when {
     durationMinutes !in 1..180 -> QuizError.BAD_DURATION
     closesAt <= opensAt || closesAt <= now -> QuizError.BAD_WINDOW
-    // If the window is shorter than the time allowed, nobody could ever finish.
     closesAt - opensAt < durationMinutes * 60_000L -> QuizError.BAD_WINDOW
     else -> null
   }
@@ -1084,7 +910,6 @@ class CampusRepository {
     return null
   }
 
-  /** A lecturer sets a quiz for a course they teach (an administrator may set one for any course of the campus). */
   fun createQuiz(
     courseCode: String,
     title: String,
@@ -1113,12 +938,6 @@ class CampusRepository {
       questions = questions.mapIndexed { i, q -> q.copy(id = "q-${i + 1}", text = q.text.trim()) }
     )
     _quizzes.value = listOf(quiz) + _quizzes.value
-    notifyUsers(
-      courseStudentIds(code), "New quiz: $code",
-      "${quiz.title} opens ${DeadlineTime.format(opensAt)}. You get ${durationMinutes} minutes once you start.",
-      NotificationType.DEADLINE_ALERT
-    )
-    recordAudit("QUIZ_CREATED", "Created quiz '${quiz.title}' for $code (${questions.size} questions, ${durationMinutes} min)")
     push {
       val qs = JSONArray()
       questions.forEach { q ->
@@ -1135,18 +954,11 @@ class CampusRepository {
     return null
   }
 
-  /** Moves a quiz's window or changes the time allowed. Attempts already running keep their own deadline. */
   fun rescheduleQuiz(quizId: String, durationMinutes: Int, opensAt: Long, closesAt: Long, now: Long = System.currentTimeMillis()): QuizError? {
     val quiz = _quizzes.value.find { it.id == quizId } ?: return QuizError.NOT_FOUND
     if (!canEditOrDelete(quiz.lecturerId)) return QuizError.NOT_ALLOWED
     validateWindow(durationMinutes, opensAt, closesAt, now)?.let { return it }
     _quizzes.value = _quizzes.value.map { if (it.id == quizId) it.copy(durationMinutes = durationMinutes, opensAt = opensAt, closesAt = closesAt) else it }
-    notifyUsers(
-      courseStudentIds(quiz.courseCode), "Quiz rescheduled: ${quiz.courseCode}",
-      "${quiz.title} now opens ${DeadlineTime.format(opensAt)} and closes ${DeadlineTime.format(closesAt)}.",
-      NotificationType.DEADLINE_ALERT
-    )
-    recordAudit("QUIZ_RESCHEDULED", "Rescheduled quiz '${quiz.title}'")
     if (isUuid(quizId)) push {
       remote.rpcCall("reschedule_quiz", JSONObject().put("p_quiz", quizId).put("p_duration", durationMinutes)
         .put("p_opens", CloudSync.isoOf(opensAt)).put("p_closes", CloudSync.isoOf(closesAt)))
@@ -1159,14 +971,11 @@ class CampusRepository {
     if (!canEditOrDelete(quiz.lecturerId)) return QuizError.NOT_ALLOWED
     _quizzes.value = _quizzes.value.filterNot { it.id == quizId }
     _attempts.value = _attempts.value.filterNot { it.quizId == quizId }
-    recordAudit("QUIZ_DELETED", "Deleted quiz '${quiz.title}' and its attempts")
     if (isUuid(quizId)) push { remote.rpcCall("delete_quiz", JSONObject().put("p_quiz", quizId)) }
     return null
   }
 
-  /** Any attempt whose timer has run out is submitted with the answers it already has. */
   fun finalizeExpiredAttempts(now: Long = System.currentTimeMillis()) {
-    // The hand-in grace keeps the very last answers from being lost: close an attempt only after it.
     if (_attempts.value.none { it.status == AttemptStatus.IN_PROGRESS && it.deadlineAt + SUBMIT_GRACE_MS <= now }) return
     _attempts.value = _attempts.value.map {
       if (it.status == AttemptStatus.IN_PROGRESS && it.deadlineAt + SUBMIT_GRACE_MS <= now)
@@ -1174,7 +983,6 @@ class CampusRepository {
     }
   }
 
-  /** A student presses Start. Starting again while an attempt is running simply resumes it. */
   fun startAttempt(quizId: String, now: Long = System.currentTimeMillis()): StartResult {
     val student = currentUser.value
     if (!isActive(student) || student.role != Role.STUDENT) return StartResult(error = QuizError.NOT_ALLOWED)
@@ -1221,14 +1029,12 @@ class CampusRepository {
     return attempt.copy(answers = merged)
   }
 
-  /** Saves one answer while the timer is still running. Answers sent after it hits zero are refused. */
   fun saveAnswer(attemptId: String, questionId: String, answer: String, now: Long = System.currentTimeMillis()): QuizError? {
     finalizeExpiredAttempts(now)
     val attempt = ownAttempt(attemptId) ?: return QuizError.NOT_FOUND
     if (attempt.status != AttemptStatus.IN_PROGRESS) {
       return if (attempt.status == AttemptStatus.AUTO_SUBMITTED) QuizError.TIME_UP else QuizError.ALREADY_SUBMITTED
     }
-    // Inside the hand-in grace the attempt is still open for the final submit, but not for ordinary saves.
     if (now >= attempt.deadlineAt) return QuizError.TIME_UP
     val updated = applyAnswers(attempt, mapOf(questionId to answer))
     _attempts.value = _attempts.value.map { if (it.id == attemptId) updated else it }
@@ -1240,10 +1046,6 @@ class CampusRepository {
     return null
   }
 
-  /**
-   * Hands the quiz in. [finalAnswers] are the last answers still on the screen; they are accepted for a few
-   * seconds after the timer ends so that nothing typed at the last moment is lost.
-   */
   fun submitAttempt(
     attemptId: String,
     finalAnswers: Map<String, String> = emptyMap(),
@@ -1251,7 +1053,7 @@ class CampusRepository {
     now: Long = System.currentTimeMillis()
   ): QuizError? {
     val attempt = ownAttempt(attemptId) ?: return QuizError.NOT_FOUND
-    if (attempt.status != AttemptStatus.IN_PROGRESS) return null // already handed in: nothing more to do
+    if (attempt.status != AttemptStatus.IN_PROGRESS) return null
     val inTime = now <= attempt.deadlineAt + SUBMIT_GRACE_MS
     var working = if (inTime) applyAnswers(attempt, finalAnswers) else attempt
     val expired = timedOut || now >= attempt.deadlineAt
@@ -1268,12 +1070,10 @@ class CampusRepository {
     }
     val quiz = _quizzes.value.find { it.id == attempt.quizId }
     if (quiz != null) {
-      notifyUsers(listOf(quiz.lecturerId), "Quiz submitted: ${quiz.courseCode}", "${attempt.studentName} finished ${quiz.title}.", NotificationType.SUBMISSION_RECEIVED)
     }
     return null
   }
 
-  /** Written answers are marked by the lecturer who set the quiz (or an administrator). */
   fun gradeAttempt(attemptId: String, awarded: Map<String, Int>): QuizError? {
     val attempt = _attempts.value.find { it.id == attemptId } ?: return QuizError.NOT_FOUND
     val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return QuizError.NOT_FOUND
@@ -1282,8 +1082,6 @@ class CampusRepository {
     val written = quiz.questions.filter { it.type == QuestionType.SHORT_ANSWER }.associateBy { it.id }
     val clean = awarded.filterKeys { it in written }.mapValues { (id, pts) -> pts.coerceIn(0, written.getValue(id).points) }
     _attempts.value = _attempts.value.map { if (it.id == attemptId) it.copy(awarded = clean, marked = true) else it }
-    notifyUsers(listOf(attempt.studentId), "Quiz marked: ${quiz.courseCode}", "${quiz.title} has been marked. Open it to see your score.", NotificationType.ANNOUNCEMENT)
-    recordAudit("QUIZ_MARKED", "Marked ${attempt.studentName}'s attempt of '${quiz.title}'")
     if (isUuid(attemptId)) push {
       val pts = JSONObject()
       clean.forEach { (q, p) -> pts.put(q, p) }
@@ -1292,7 +1090,6 @@ class CampusRepository {
     return null
   }
 
-  /** The score of a finished attempt. A student cannot ask for it while the quiz is still running. */
   fun scoreOf(attemptId: String): QuizScore? {
     val attempt = _attempts.value.find { it.id == attemptId } ?: return null
     val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return null
@@ -1309,10 +1106,6 @@ class CampusRepository {
     )
   }
 
-  // ---------- Registry: accounts ----------
-
-
-  /** Approves a waiting account on the server, then reloads the list. Returns true when it worked. */
   suspend fun approveUser(userId: String, role: Role, programme: String?, teaches: Set<String>): Boolean {
     if (!canApproveOrDisapprove()) return false
     val before = pendingUsers.value.find { it.id == userId } ?: return false
@@ -1332,7 +1125,6 @@ class CampusRepository {
     return res.ok
   }
 
-  /** Makes a student a class representative (or removes the mark). Administrators and the programme's lecturers may. */
   suspend fun setClassRep(studentId: String, on: Boolean): Boolean {
     val me = currentUser.value
     if (!isActive(me) || me.role == Role.STUDENT || me.isPlatformAdmin) return false
@@ -1344,11 +1136,6 @@ class CampusRepository {
     return res.ok
   }
 
-  /** Reloads the accounts this administrator may see (their own campus). */
-  suspend fun refreshAccounts() { auth.loadAccounts() }
-
-  // ---------- Campus setup (the campus administrator) ----------
-
   private fun isCampusAdmin(): Boolean {
     val u = currentUser.value
     return isActive(u) && u.role == Role.ADMIN && !u.isPlatformAdmin
@@ -1358,7 +1145,6 @@ class CampusRepository {
     if (!isCampusAdmin()) return false
     val ok = catalog.addProgramme(currentUser.value.universityId, name)
     if (ok) {
-      recordAudit("PROGRAMME_ADDED", name.trim())
       val uni = auth.universityUuid(currentUser.value.universityId)
       if (uni != null) push { remote.insertRow("programmes", JSONObject().put("university_id", uni).put("name", name.trim())) }
     }
@@ -1372,7 +1158,6 @@ class CampusRepository {
     if (ok) {
       val clean = code.trim().uppercase().replace(" ", "")
       if (!programme.isNullOrBlank()) auth.enrollProgramme(uni, programme.trim(), clean)
-      recordAudit("COURSE_ADDED", "$clean ${title.trim()}")
       push {
         val row = JSONObject().put("code", clean).put("title", title.trim())
         if (!programme.isNullOrBlank()) row.put("programme", programme.trim())
@@ -1387,12 +1172,10 @@ class CampusRepository {
     val uni = currentUser.value.universityId
     val before = catalog.coursesFor(uni).keys
     val result = catalog.importCourses(uni, text)
-    // Students already in a programme get the courses just added to it.
     catalog.catalogFor(uni).forEach { (programme, codes) ->
       codes.filter { it !in before }.forEach { auth.enrollProgramme(uni, programme, it) }
     }
     if (result.added > 0) {
-      recordAudit("COURSES_IMPORTED", "${result.added} added, ${result.skipped} skipped")
       val titles = catalog.coursesFor(uni)
       val programmes = catalog.catalogFor(uni)
       push {
@@ -1408,17 +1191,12 @@ class CampusRepository {
     return result
   }
 
-  /**
-   * Puts exactly [codes] in [programme]. Students of the programme see the added courses and lose the
-   * dropped ones. The database function `set_programme_courses` is the real authority.
-   */
   fun setProgrammeCourses(programme: String, codes: Set<String>): Boolean {
     if (!isCampusAdmin()) return false
     val uni = currentUser.value.universityId
     val before = catalog.catalogFor(uni).entries.firstOrNull { it.key.equals(programme.trim(), true) }?.value.orEmpty()
     if (!catalog.setProgrammeCourses(uni, programme, codes)) return false
     (codes - before).forEach { auth.enrollProgramme(uni, programme.trim(), it) }
-    recordAudit("PROGRAMME_COURSES", "${programme.trim()}: ${codes.size} courses")
     push {
       remote.rpcCall(
         "set_programme_courses",
@@ -1432,27 +1210,16 @@ class CampusRepository {
     if (!isCampusAdmin()) return false
     val ok = catalog.addRoom(currentUser.value.universityId, name)
     if (ok) {
-      recordAudit("ROOM_ADDED", name.trim())
       val uni = auth.universityUuid(currentUser.value.universityId)
       if (uni != null) push { remote.insertRow("rooms", JSONObject().put("university_id", uni).put("name", name.trim())) }
     }
     return ok
   }
 
-  // ---------- Campus setup: who teaches which course ----------
-
-  /** Approved lecturers of this campus. Only the campus administrator may list them for assigning. */
   fun campusLecturers(): List<UserProfile> =
     if (!isCampusAdmin()) emptyList()
     else activeProfiles().filter { it.role == Role.LECTURER }.sortedBy { it.fullName }
 
-  /**
-   * Makes [lecturerIds] exactly the lecturers of [courseCode]. All or nothing:
-   * - only a campus administrator, and only for a course of their own campus;
-   * - every chosen person must be an approved lecturer of the same campus;
-   * - a lecturer who still has a live class in the course cannot be removed from it.
-   * Mirrors the database function `set_course_lecturers`, which is the real authority.
-   */
   fun setCourseLecturers(courseCode: String, lecturerIds: Set<String>): AssignLecturersResult {
     if (!isCampusAdmin()) return AssignLecturersResult(AssignLecturersError.NOT_ALLOWED)
     val uni = currentUser.value.universityId
@@ -1477,22 +1244,16 @@ class CampusRepository {
     (added).forEach { id -> auth.setTeaching(id, lecturers.getValue(id).teachesCourses + code) }
     (removed).forEach { id -> auth.setTeaching(id, lecturers.getValue(id).teachesCourses - code) }
 
-    recordAudit("COURSE_LECTURERS_SET", "$code: +${added.size} -${removed.size}")
     push {
       remote.rpcCall("set_course_lecturers", JSONObject().put("p_course", code).put("p_lecturers", JSONArray(lecturerIds.toList())))
     }
     if (added.isNotEmpty()) {
-      notifyUsers(added, "You now teach $code", "The Academic Registry assigned you to $code. You can post notices and upload materials for it.", NotificationType.ANNOUNCEMENT)
     }
     if (removed.isNotEmpty()) {
-      notifyUsers(removed, "You no longer teach $code", "The Academic Registry changed the lecturers of $code.", NotificationType.ANNOUNCEMENT)
     }
     return AssignLecturersResult()
   }
 
-  // ---------- Scheduling: pick the subject, the lecturer, the room and the time ----------
-
-  /** Subjects the current person may schedule: every campus course for the registry, their own for a lecturer. */
   fun schedulableCourses(): List<Pair<String, String>> {
     val user = currentUser.value
     if (!isActive(user) || user.isPlatformAdmin) return emptyList()
@@ -1504,11 +1265,9 @@ class CampusRepository {
     }
   }
 
-  /** Lecturers of this campus who teach the subject. */
   fun lecturersFor(courseCode: String): List<UserProfile> {
     val known = activeProfiles().filter { it.role == Role.LECTURER && courseCode in it.teachesCourses }.sortedBy { it.fullName }
     if (known.isNotEmpty() || !currentUser.value.isClassRep) return known
-    // A class representative cannot read other people's accounts: the server lists the course's lecturers.
     val me = currentUser.value
     return _repLecturers.value[courseCode].orEmpty().map { (id, name) ->
       UserProfile(id = id, fullName = name, email = "", role = Role.LECTURER, status = AccountStatus.APPROVED,
@@ -1516,7 +1275,6 @@ class CampusRepository {
     }
   }
 
-  /** Every room of the campus, with the course that already uses it at that time (if any). */
   fun roomsWithAvailability(day: Int, start: String, end: String): List<RoomOption> {
     val user = currentUser.value
     val busy = _sessions.value.filter {
@@ -1567,8 +1325,6 @@ class CampusRepository {
       cohort = ""
     )
     _sessions.value = _sessions.value + session
-    notifyUsers(courseStudentIds(courseCode), "New class: $courseCode", "${venue.trim()}, $start-$end", NotificationType.TIMETABLE_CHANGE)
-    recordAudit("SESSION_CREATED", "$courseCode day $day $start-$end in ${venue.trim()} with ${lecturer.fullName}")
     push {
       remote.insertRow("class_sessions", JSONObject()
         .put("course_code", serverCourse(courseCode)).put("lecturer_id", lecturer.id).put("day_of_week", day)
@@ -1577,40 +1333,30 @@ class CampusRepository {
     return null
   }
 
-  // ---------- App manager (runs every campus, sees none of their content) ----------
-
   private val _dataVersion = MutableStateFlow(0)
 
   private fun isAppManager(): Boolean = currentUser.value.let { it.isPlatformAdmin && isActive(it) }
 
-  /** Totals per campus. Counts only: the manager never reads what a campus wrote. */
   private val _remoteSummaries = MutableStateFlow<Map<String, RemoteCampusSummary>>(emptyMap())
 
   private val remote = RemoteAdmin(token = { auth.accessToken }, refresh = { auth.refreshAccessToken() })
 
-  /** People management for administrators and the app manager, and the AI settings. */
   val peopleAdmin = PeopleAdmin(remote)
 
-  @Suppress("unused")
-  private val tokensWired = run {
+  init {
     Backend.tokenSource = { auth.accessToken }
     Backend.tokenRefresh = { auth.refreshAccessToken() }
-    true
   }
-
-  // ---------- Cloud sync: the server is the truth; this phone keeps a copy ----------
 
   private val cloud = CloudSync(remote)
   private val pushMutex = Mutex()
   private val pullMutex = Mutex()
-  private val attemptAlias = java.util.concurrent.ConcurrentHashMap<String, String>() // my local attempt id -> the server's id
+  private val attemptAlias = java.util.concurrent.ConcurrentHashMap<String, String>()
   private val _repLecturers = MutableStateFlow<Map<String, List<Pair<String, String>>>>(emptyMap())
   private val _classMembers = MutableStateFlow<List<ClassMember>>(emptyList())
 
-  /** Students a lecturer or administrator may make class representatives. */
   val classMembers: StateFlow<List<ClassMember>> = _classMembers.asStateFlow()
 
-  /** Plain-words message when the server refused or could not save a change. */
   var onCloudMessage: ((String) -> Unit)? = null
 
   private val _syncing = MutableStateFlow(false)
@@ -1625,7 +1371,6 @@ class CampusRepository {
 
   private fun safeName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(80).ifBlank { "file" }
 
-  /** Sends one change to the server (in order), tells the person if it was refused, then re-reads the truth. */
   private fun push(refresh: Boolean = true, silent: Boolean = false, block: suspend () -> RemoteResult) {
     if (!Backend.live) return
     scope.launch(Dispatchers.IO) {
@@ -1637,7 +1382,6 @@ class CampusRepository {
     }
   }
 
-  /** Re-reads everything this person may see from the server. */
   fun syncNow() {
     if (!Backend.live) return
     scope.launch(Dispatchers.IO) { pullNow() }
@@ -1654,6 +1398,7 @@ class CampusRepository {
         val snap = cloud.pull(auth.accounts.value[me.id]?.profile ?: me, code)
         if (snap == null) { _isOffline.value = true; return }
         applySnapshot(me, snap)
+        if (me.role == Role.ADMIN) cloud.auditLog(me)?.let { _auditLogs.value = it }
         _isOffline.value = false
         _lastSyncedAt.value = System.currentTimeMillis()
         prefetchFiles(snap.files)
@@ -1689,7 +1434,6 @@ class CampusRepository {
         .sortedBy { it.name }
     } else snap.classMembers
 
-    // Quizzes. An attempt that is running on this phone keeps its local id until the server confirms it.
     val serverToLocal = attemptAlias.entries.associate { it.value to it.key }
     val fromServer = snap.attempts.map { a -> serverToLocal[a.id]?.let { local -> a.copy(id = local) } ?: a }
     val pendingLocal = _attempts.value.filter {
@@ -1701,7 +1445,6 @@ class CampusRepository {
     _dataVersion.value++
   }
 
-  /** Downloads cloud files in the background so documents open (and open offline). */
   private suspend fun prefetchFiles(files: List<FileRef>) {
     for (f in files.take(40)) {
       if (f.size > 25L * 1024 * 1024) continue
@@ -1715,7 +1458,6 @@ class CampusRepository {
     }
   }
 
-  /** Uploads a picked file and returns its storage path, or null (with the person told) when that failed. */
   private suspend fun uploadPicked(bucket: String, folder: String, file: AttachmentFile): Pair<String, Long>? {
     val bytes = CloudFiles.read(file.uriString)
     if (bytes == null || bytes.isEmpty()) { onCloudMessage?.invoke("That file could not be read."); return null }
@@ -1726,7 +1468,6 @@ class CampusRepository {
   }
 
   init {
-    // A gentle refresh while someone is signed in, so changes by others appear without any button.
     scope.launch(Dispatchers.IO) {
       while (true) {
         delay(60_000)
@@ -1765,7 +1506,6 @@ class CampusRepository {
     if (!Regex("[A-Z0-9_-]{2,20}").matches(shortName) || shortName == "PLATFORM" || name.trim().length < 2) {
       return PlatformResult(false, PlatformError.DETAILS_MISSING)
     }
-    // Check the administrator's details first, so a bad email does not leave an empty campus behind.
     val pre = auth.checkAdminDetails(adminName, adminEmail, adminNumber, adminPassword)
     if (pre != null) return PlatformResult(false, authError = pre)
 
@@ -1773,7 +1513,6 @@ class CampusRepository {
     if (!made.ok) return PlatformResult(false, remoteToPlatform(made.error), remoteToAuth(made.error))
     val admin = remote.provisionUser(shortName, "admin", adminName.trim(), adminEmail.trim().lowercase(), adminNumber.trim(), null, adminPassword)
     if (!admin.ok) {
-      // Nothing half-made is left behind: remove the empty campus again.
       remote.deleteUniversity(made.detail)
       return PlatformResult(false, remoteToPlatform(admin.error), remoteToAuth(admin.error))
     }
@@ -1804,11 +1543,11 @@ class CampusRepository {
     else -> null
   }
 
-  /** Reads the campus totals from the server (app manager only). */
   suspend fun refreshCampuses() {
     if (!isAppManager()) return
     val list = remote.campusSummaries() ?: return
     _remoteSummaries.value = list.associateBy { it.code }
+    cloud.auditLog(currentUser.value)?.let { _auditLogs.value = it }
     _dataVersion.value++
   }
 
@@ -1820,18 +1559,11 @@ class CampusRepository {
     return res.ok
   }
 
-  // ---------- Campus details, offline mode and adding people ----------
-
-  /** The campus the signed-in person belongs to, or null for the app manager and when signed out. */
   val myCampus: StateFlow<com.willykez.campconnect.data.model.University?> =
     combine(currentUser, catalog.universities) { user, universities ->
       if (user.isPlatformAdmin) null else universities.firstOrNull { it.id == user.universityId }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
-  /**
-   * True while the person's campus is in offline (maintenance) mode. Everyone at that campus is paused,
-   * including its administrators. Only the app manager can switch it off again.
-   */
   val campusPaused: StateFlow<Boolean> = myCampus
     .map { it?.underMaintenance == true }
     .stateIn(scope, SharingStarted.Eagerly, false)
@@ -1890,15 +1622,12 @@ class CampusRepository {
   suspend fun deleteCampus(universityId: String): Boolean {
     if (!isAppManager() || universityId == PlatformConfig.ID) return false
     val uuid = auth.universityUuid(universityId) ?: return false
-    remote.wipeCampus(uuid, "everything") // removes the stored files too
+    remote.wipeCampus(uuid, "everything")
     val res = remote.deleteUniversity(uuid)
     if (res.ok) { auth.loadDirectory(); refreshCampuses() }
     return res.ok
   }
 
-  // ---------- My data ----------
-
-  /** Plain-text copy of everything stored about the signed-in person. */
   fun exportMyData(): String {
     val user = currentUser.value
     val notes = _notifications.value.filter { it.userId == user.id }
@@ -1932,24 +1661,7 @@ class CampusRepository {
     val user = currentUser.value
     if (user.id in _deletionRequests.value || !isActive(user)) return
     _deletionRequests.value = _deletionRequests.value + user.id
-    recordAudit("DATA_DELETION_REQUESTED", "${user.fullName} asked for their data to be deleted")
     val admins = activeProfiles().filter { it.role == Role.ADMIN }.map { it.id }
-    notifyUsers(admins, "Data deletion request", "${user.fullName} asked for their personal data to be deleted.", NotificationType.APPROVAL)
   }
 
-  // ---------- Audit ----------
-
-  private fun recordAudit(action: String, details: String, universityId: String? = null) {
-    val now = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date()) + " EAT"
-    val user = currentUser.value
-    val log = AuditLog(
-      id = "log-" + UUID.randomUUID().toString().take(6),
-      universityId = universityId ?: user.universityId,
-      actor = user.fullName + " (${user.role.name})",
-      action = action,
-      details = details,
-      timestamp = now
-    )
-    _auditLogs.value = listOf(log) + _auditLogs.value
-  }
 }

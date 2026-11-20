@@ -35,7 +35,6 @@ fun DocumentKind.icon(): ImageVector = when (this) {
   DocumentKind.OTHER -> Icons.Default.InsertDriveFile
 }
 
-/** One colour per file type, so a list of mixed files can be scanned at a glance. */
 fun DocumentKind.accent(): Color = when (this) {
   DocumentKind.PDF -> Color(0xFFDC2626)
   DocumentKind.IMAGE -> Color(0xFF2563EB)
@@ -47,7 +46,6 @@ fun DocumentKind.accent(): Color = when (this) {
   DocumentKind.OTHER -> Color(0xFF64748B)
 }
 
-/** A rounded tile with the file type's icon on a soft background of its colour. */
 @Composable
 fun FileKindBadge(kind: DocumentKind, modifier: Modifier = Modifier, size: Dp = 44.dp) {
   Box(

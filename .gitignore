@@ -1,7 +1,6 @@
 *.iml
 .gradle
 .kotlin
-/local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -16,9 +15,5 @@
 local.properties
 .env
 debug.keystore
-
-# Local credentials and machine-specific settings
-.env
-local.properties
 *.jks
 *.keystore

@@ -24,12 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.willykez.campconnect.ui.theme.DeepBlue
 
-/**
- * The app's standard button for card actions (Read, Save, Cancel, Relocate, Sync...). At least 52dp
- * tall so it is easy to hit with a thumb, with an icon and a clear label.
- *
- * [filled] gives a solid button; otherwise it is a soft, tinted button.
- */
 @Composable
 fun ActionButton(
   label: String,
@@ -68,7 +62,6 @@ fun ActionButton(
   }
 }
 
-/** A square 44dp icon button with a soft tinted background, for secondary actions like delete or edit. */
 @Composable
 fun SoftIconButton(
   icon: ImageVector,

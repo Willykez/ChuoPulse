@@ -24,8 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,7 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.data.docs.DocumentKind
 import com.willykez.campconnect.data.model.AttachmentFile
-import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.SuccessGreen
 
@@ -62,7 +59,6 @@ fun CampusFilePicker(
 ) {
   val context = LocalContext.current
 
-  // The system document picker, limited to the formats the app can open and analyse.
   val fileLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.OpenDocument()
   ) { uri: Uri? ->
@@ -74,7 +70,6 @@ fun CampusFilePicker(
 
   Column(modifier = modifier.fillMaxWidth()) {
     if (selectedFile == null) {
-      // Dropzone / File Picker Trigger
       Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
@@ -128,7 +123,6 @@ fun CampusFilePicker(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
-            // Main Device File Picker button
             Surface(
               shape = RoundedCornerShape(8.dp),
               color = DeepBlue,
@@ -164,7 +158,6 @@ fun CampusFilePicker(
         }
       }
     } else {
-      // Selected File Preview Card
       Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -211,7 +204,6 @@ fun CampusFilePicker(
             }
           }
 
-          // Preview button
           IconButton(
             onClick = { onPreviewFile(selectedFile) },
             modifier = Modifier.testTag("preview_selected_file_btn")
@@ -223,7 +215,6 @@ fun CampusFilePicker(
             )
           }
 
-          // Clear button
           IconButton(
             onClick = onClearFile,
             modifier = Modifier.testTag("remove_selected_file_btn")

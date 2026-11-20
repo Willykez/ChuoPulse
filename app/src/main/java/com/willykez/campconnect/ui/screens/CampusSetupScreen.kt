@@ -9,23 +9,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,10 +43,6 @@ import com.willykez.campconnect.viewmodel.CampusViewModel
 
 private enum class SetupKind { PROGRAMME, COURSE, IMPORT, ROOM }
 
-/**
- * The campus administrator's own set-up: programmes, courses and rooms. Students and lecturers of
- * this campus choose from what is added here, and nobody else can add or see it.
- */
 @Composable
 fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val user by viewModel.currentUser.collectAsState()
@@ -59,7 +50,6 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val allCourses by viewModel.catalogCourses.collectAsState()
   val allRooms by viewModel.rooms.collectAsState()
   var open by remember { mutableStateOf<SetupKind?>(null) }
-  // Reading the accounts makes this screen refresh as soon as a lecturer is added or removed.
   val accounts by viewModel.accounts.collectAsState()
   var assigningFor by remember { mutableStateOf<String?>(null) }
   var assigning by remember { mutableStateOf(false) }
@@ -337,7 +327,6 @@ internal fun SheetField(
   value: String, onChange: (String) -> Unit, label: String, tag: String,
   password: Boolean = false, startVisible: Boolean = false
 ) {
-  // Password fields get an eye: tap it to see what you typed, tap again to hide it.
   var visible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(startVisible) }
   OutlinedTextField(
     value = value,

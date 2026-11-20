@@ -24,10 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.ui.theme.DeepBlue
 
-/**
- * The same page heading on every screen: a tinted icon tile, the title, a one-line hint, and room for
- * an action on the right. Keeps the whole app looking like one product.
- */
 @Composable
 fun ScreenHeading(
   title: String,
@@ -50,7 +46,6 @@ fun ScreenHeading(
   }
 }
 
-/** A friendly empty list: big icon tile, what is missing, and what to do about it. */
 @Composable
 fun EmptyState(icon: ImageVector, title: String, hint: String = "", modifier: Modifier = Modifier) {
   Column(

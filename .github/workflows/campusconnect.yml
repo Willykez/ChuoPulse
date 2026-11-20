@@ -1,7 +1,5 @@
 name: ChuoPulse build
 
-# Builds a small (minified + shrunk) APK you can install. Database changes and Edge Functions
-# are applied by hand in the Supabase dashboard, so there are no deploy jobs here.
 
 on:
   push:
@@ -88,7 +86,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # Lets you read crash reports from the minified build.
       - name: Upload mapping file
         if: ${{ (inputs.variant || 'staging') == 'staging' }}
         uses: actions/upload-artifact@v4
@@ -142,7 +139,6 @@ jobs:
           done
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload-key.p12"
           echo "KEYSTORE_PATH=$RUNNER_TEMP/upload-key.p12" >> "$GITHUB_ENV"
-          # Gradle also reads this file when it configures the project.
           keytool -genkeypair -keystore debug.keystore \
             -storepass android -keypass android -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 \

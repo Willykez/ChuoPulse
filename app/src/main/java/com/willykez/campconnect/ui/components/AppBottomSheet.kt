@@ -65,18 +65,6 @@ import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
 
-/**
- * The one bottom-sheet container for every form, detail view and confirmation in the app.
- *
- * Layout, top to bottom:
- *  - drag handle
- *  - optional header: [title] / [subtitle] and a close button (only when [title] is given)
- *  - scrollable body (keyboard-aware, so fields are never hidden behind the keyboard)
- *  - optional [footer] pinned to the bottom, so the main action is always reachable
- *
- * Existing callers that pass only `onDismissRequest` and content keep working: with no title and
- * no footer the sheet is simply a styled, scrollable container.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppBottomSheet(
@@ -91,10 +79,6 @@ fun AppBottomSheet(
   footer: (@Composable RowScope.() -> Unit)? = null,
   content: @Composable ColumnScope.() -> Unit
 ) {
-  // The sheet only closes when the person closes it (✕, scrim, drag, or Back with the keyboard
-  // already gone). Anything that happens because the KEYBOARD closed (its hide arrow, Back that
-  // the keyboard used up, the layout resizing) is ignored, and a sheet that already slid away is
-  // brought straight back.
   val guard = rememberKeyboardGuard()
   val state = sheetState ?: rememberGuardedSheetState(skipPartiallyExpanded = true, guard = guard)
   val scope = rememberCoroutineScope()
@@ -184,10 +168,6 @@ fun AppBottomSheet(
   }
 }
 
-/**
- * Standard footer for a sheet: a quiet dismiss button and one clear primary action.
- * Use inside `AppBottomSheet(footer = { SheetButtons(...) })`.
- */
 @Composable
 fun RowScope.SheetButtons(
   dismissLabel: String,
@@ -224,10 +204,6 @@ fun RowScope.SheetButtons(
   }
 }
 
-/**
- * Replaces AlertDialog for confirmations. Destructive confirmations are red and spell out what is
- * affected, so the person knows exactly what they are agreeing to.
- */
 @Composable
 fun ConfirmSheet(
   title: String,
@@ -274,18 +250,11 @@ fun ConfirmSheet(
   }
 }
 
-
-/**
- * Knows whether the keyboard is open or has only just closed. Measured on the sheet's own window
- * (so it is right inside a dialog window too), not from Compose insets, which a dialog window does
- * not always receive.
- */
 class KeyboardGuard internal constructor() {
   var open by mutableStateOf(false)
     internal set
   internal var closedAt: Long = 0L
 
-  /** True while the keyboard is open, or for a moment after it closed. */
   fun blocking(): Boolean = open || (System.currentTimeMillis() - closedAt) < GRACE_MS
 
   internal fun update(nowOpen: Boolean) {
@@ -302,8 +271,6 @@ fun rememberKeyboardGuard(): KeyboardGuard {
   val view = LocalView.current
   val guard = remember { KeyboardGuard() }
   val composeIme = WindowInsets.isImeVisible
-  // Poll the window itself. Setting an insets listener on this view would replace Compose's own
-  // and break imePadding, so reading is the safe way.
   LaunchedEffect(view, composeIme) {
     while (true) {
       val visible = composeIme ||
@@ -315,7 +282,6 @@ fun rememberKeyboardGuard(): KeyboardGuard {
   return guard
 }
 
-/** A sheet state that refuses to hide because of the keyboard closing. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun rememberGuardedSheetState(
@@ -326,10 +292,6 @@ fun rememberGuardedSheetState(
   confirmValueChange = { target -> !(target == SheetValue.Hidden && guard.blocking()) }
 )
 
-/**
- * While the keyboard is open (or just closed), Back only closes the keyboard and never the sheet.
- * Once the keyboard is gone, Back closes the sheet as usual.
- */
 @Composable
 private fun KeyboardBackGuard(guard: KeyboardGuard) {
   val keyboard = LocalSoftwareKeyboardController.current

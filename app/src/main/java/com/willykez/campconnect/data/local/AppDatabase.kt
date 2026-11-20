@@ -26,7 +26,6 @@ abstract class AppDatabase : RoomDatabase() {
       ).addCallback(object : Callback() {
         override fun onOpen(db: SupportSQLiteDatabase) {
           super.onOpen(db)
-          // Removes sample entries left on phones that installed an earlier build.
           CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             getInstance(context).processedDocumentDao().deleteSeedDocuments()
           }

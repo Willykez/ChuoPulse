@@ -7,11 +7,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 
-/**
- * Dialog windows (full-screen viewers, quizzes) get their own system bars. Call this inside the
- * dialog so its status and navigation bars are transparent like the rest of the app and the icons
- * stay readable on the dialog's background.
- */
 @Composable
 fun TransparentDialogBars(lightIcons: Boolean) {
   val view = LocalView.current
@@ -32,10 +27,6 @@ fun TransparentDialogBars(lightIcons: Boolean) {
   }
 }
 
-/**
- * Sets the status bar icon colour of the main window while a screen with a dark header is shown
- * (for example the app manager's blue header), then puts the app's own choice back.
- */
 @Composable
 fun ActivityStatusBarIcons(darkIcons: Boolean) {
   val view = LocalView.current

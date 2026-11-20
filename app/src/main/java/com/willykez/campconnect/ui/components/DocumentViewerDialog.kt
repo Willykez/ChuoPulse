@@ -39,20 +39,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Slideshow
-import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.Button
@@ -86,7 +80,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
@@ -108,9 +101,7 @@ import com.willykez.campconnect.data.docs.DocumentTextExtractor
 import com.willykez.campconnect.data.docs.ExtractedDocument
 import com.willykez.campconnect.data.docs.ExtractionException
 import com.willykez.campconnect.data.model.AttachmentFile
-import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
-import com.willykez.campconnect.ui.theme.SuccessGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -120,31 +111,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 
-// --- Light palette used inside the dialog body -------------------------------
 private val ViewerBodyBackground = Color(0xFFF1F5F9)
 private val ViewerPageBorder     = Color(0xFFE2E8F0)
 private val ViewerCardSurface    = Color(0xFFFFFFFF)
 
-/** Whether an analysis of the open file exists, is running, or failed. */
 enum class AnalysisState { NONE, RUNNING, DONE, FAILED }
 
-/** Connects the viewer's "Analyse with AI" button. Pass null to hide the button. */
 data class ViewerAnalysis(
   val state: AnalysisState,
   val onAnalyse: () -> Unit,
   val onViewResult: (() -> Unit)? = null
 )
 
-/**
- * Full-screen, card-styled viewer for every kind of document the app accepts.
- *  - PDFs are drawn page by page; photos are shown with zoom.
- *  - Word, PowerPoint, Excel, OpenDocument and text files are shown as readable pages
- *    (slides as cards), and the text can be selected and copied.
- *  - A floating "Analyse with AI" pill sits at the bottom of the body for any file
- *    that can be analysed.
- *  - Pinch to zoom, drag when zoomed, double-tap to zoom in and out. ✕ or the
- *    "Close Document" button closes it.
- */
 @Composable
 fun DocumentViewerDialog(
   attachment: AttachmentFile,
@@ -196,7 +174,6 @@ fun DocumentViewerDialog(
 
         Column(modifier = Modifier.fillMaxSize()) {
 
-          // ---------- Top bar -------------------------------------------------
           Row(
             modifier = Modifier
               .fillMaxWidth()
@@ -261,7 +238,6 @@ fun DocumentViewerDialog(
 
           HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
-          // ---------- Body ----------------------------------------------------
           Box(
             modifier = Modifier
               .weight(1f)
@@ -306,7 +282,6 @@ fun DocumentViewerDialog(
 
           HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
-          // ---------- Bottom bar ---------------------------------------------
           Row(
             modifier = Modifier
               .fillMaxWidth()
@@ -336,14 +311,10 @@ fun DocumentViewerDialog(
   }
 }
 
-// ---------- Kind-aware badge ------------------------------------------------
-
 @Composable
 private fun AttachmentIcon(attachment: AttachmentFile, kind: DocumentKind, size: Dp = 36.dp) {
   FileKindBadge(kind = if (isPdf(attachment)) DocumentKind.PDF else kind, size = size)
 }
-
-// ---------- Pictures -------------------------------------------------------
 
 @Composable
 private fun ImagePage(uri: String, name: String) {
@@ -368,10 +339,7 @@ private fun ImagePage(uri: String, name: String) {
   }
 }
 
-// ---------- PDF ------------------------------------------------------------
-
 private class PdfDoc(private val renderer: PdfRenderer, private val descriptor: ParcelFileDescriptor) {
-  // PdfRenderer allows one open page at a time, so renders take turns.
   private val lock = Mutex()
   val pageCount: Int = renderer.pageCount
 
@@ -402,7 +370,6 @@ private sealed interface PdfLoad {
   object Failed : PdfLoad
 }
 
-/** Opens a PDF from a phone file (content://, file://) or the cloud (http/https). */
 private fun openPdfDescriptor(context: Context, uri: String): ParcelFileDescriptor? {
   if (uri.startsWith("http://") || uri.startsWith("https://")) {
     val dir = File(context.cacheDir, "viewer").apply { mkdirs() }
@@ -439,7 +406,7 @@ private fun PdfPages(uri: String, onPageLabel: (String?) -> Unit) {
           try {
             PdfLoad.Ready(PdfDoc(PdfRenderer(fd), fd))
           } catch (e: Exception) {
-            fd.close() // damaged, empty or password-protected
+            fd.close()
             PdfLoad.Failed
           }
         } catch (e: Exception) {
@@ -449,8 +416,6 @@ private fun PdfPages(uri: String, onPageLabel: (String?) -> Unit) {
     } ?: PdfLoad.Failed
   }
 
-  // Capture the document now — reading `load` inside onDispose would see the
-  // NEW value (Ready) when state changes from Loading, and close too early.
   val opened = (load as? PdfLoad.Ready)?.doc
   DisposableEffect(opened) { onDispose { opened?.close() } }
 
@@ -470,7 +435,6 @@ private fun PdfPages(uri: String, onPageLabel: (String?) -> Unit) {
       val scope = rememberCoroutineScope()
 
       Column(modifier = Modifier.fillMaxSize()) {
-        // Reading toolbar — light theme
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -521,14 +485,12 @@ private fun PdfPages(uri: String, onPageLabel: (String?) -> Unit) {
         ZoomBox(modifier = Modifier.weight(1f).fillMaxWidth(), state = zoom) {
           BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            // Draw at ~1.6× screen width so zooming stays sharp.
             val widthPx = with(density) { (maxWidth * 1.6f).roundToPx() }.coerceIn(480, 2400)
 
             LazyColumn(
               state = listState,
               modifier = Modifier.fillMaxSize(),
               verticalArrangement = Arrangement.spacedBy(10.dp),
-              // Bottom padding leaves room for the floating analysis pill.
               contentPadding = PaddingValues(top = 10.dp, bottom = 88.dp)
             ) {
               itemsIndexed(List(doc.pageCount) { it }, key = { _, page -> page }) { _, index ->
@@ -581,7 +543,6 @@ private fun PdfPageImage(doc: PdfDoc, index: Int, widthPx: Int) {
         .border(1.dp, ViewerPageBorder, RoundedCornerShape(8.dp))
     )
   } else {
-    // Keeps the scroll position steady while the page is drawn.
     Box(
       modifier = Modifier
         .fillMaxWidth()
@@ -596,9 +557,6 @@ private fun PdfPageImage(doc: PdfDoc, index: Int, widthPx: Int) {
   }
 }
 
-// ---------- Zoom and pan ---------------------------------------------------
-
-/** Zoom level and pan position, kept outside [ZoomBox] so toolbar buttons can change them too. */
 private class ZoomState {
   val scaleState = mutableFloatStateOf(1f)
   val offsetState = mutableStateOf(Offset.Zero)
@@ -610,10 +568,6 @@ private class ZoomState {
   }
 }
 
-/**
- * Pinch to zoom (1×–5×), drag to pan while zoomed, double-tap to jump in and out.
- * With one finger at 1× the gesture is left alone, so lists inside still scroll normally.
- */
 @Composable
 private fun ZoomBox(
   modifier: Modifier = Modifier,
@@ -670,8 +624,6 @@ private fun ZoomBox(
   ) { content() }
 }
 
-// ---------- Small pieces ---------------------------------------------------
-
 @Composable
 private fun LoadingIndicator() {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -712,12 +664,10 @@ private fun ViewerMessage(title: String, body: String) {
 
 private fun isPdf(a: AttachmentFile): Boolean {
   val ext = a.fileName.substringAfterLast('.', "")
-  // The extension wins; the stored type is only trusted when the name has no extension.
   return ext.equals("pdf", ignoreCase = true) ||
     (ext.isEmpty() && a.mimeType.equals("application/pdf", ignoreCase = true))
 }
 
-/** Word, PowerPoint and other files cannot be drawn inside the app. They open in another app. */
 @Composable
 private fun OtherFile(attachment: AttachmentFile, onOpen: () -> Unit) {
   Column(
@@ -756,7 +706,6 @@ private fun OtherFile(attachment: AttachmentFile, onOpen: () -> Unit) {
 private fun openInAnotherApp(context: Context, attachment: AttachmentFile) {
   val raw = attachment.uriString?.let { Uri.parse(it) } ?: return
   runCatching {
-    // Files kept in the app's own library are shared through a FileProvider, never as file://.
     val uri = if (raw.scheme == "file") {
       FileProvider.getUriForFile(context, "${context.packageName}.files", File(raw.path.orEmpty()))
     } else raw
@@ -771,8 +720,6 @@ private fun openInAnotherApp(context: Context, attachment: AttachmentFile) {
     context.startActivity(Intent.createChooser(view, null))
   }
 }
-
-// ---------- Word, slides, spreadsheets and text ---------------------------
 
 private sealed interface TextLoad {
   data object Loading : TextLoad
@@ -954,8 +901,6 @@ private fun ReadingCard(text: String, label: String?) {
     }
   }
 }
-
-// ---------- Analyse pill ---------------------------------------------------
 
 @Composable
 private fun AnalysisPill(analysis: ViewerAnalysis, modifier: Modifier = Modifier) {

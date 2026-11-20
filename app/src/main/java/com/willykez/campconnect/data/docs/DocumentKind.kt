@@ -1,6 +1,5 @@
 package com.willykez.campconnect.data.docs
 
-/** What kind of file something is, decided from its extension first and its MIME type second. */
 enum class DocumentKind(val label: String) {
   PDF("PDF"),
   IMAGE("Image"),
@@ -12,7 +11,6 @@ enum class DocumentKind(val label: String) {
   OTHER("File");
 
   companion object {
-    /** Everything the file pickers offer. Android lists only files of these types. */
     val pickerMimeTypes: Array<String> = arrayOf(
       "application/pdf",
       "image/*",
@@ -31,7 +29,6 @@ enum class DocumentKind(val label: String) {
       "text/*"
     )
 
-    /** Old binary Office formats cannot be read without a large library. Saying so beats guessing. */
     val legacyOffice = setOf("doc", "ppt", "xls")
 
     fun extensionOf(fileName: String): String = fileName.substringAfterLast('.', "").lowercase()

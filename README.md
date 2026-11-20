@@ -3,57 +3,56 @@
 Android app (Kotlin + Jetpack Compose) for university campuses in Tanzania: timetables, announcements,
 course materials, deadlines, quizzes and submissions. The backend is Supabase.
 
-## Project layout
+## Layout
 
 ```
 app/                         Android application
-supabase/migrations/         Database schema, row-level security, role limits, audit rules
-supabase/functions/          Edge Function: campus-wipe-files
-.github/workflows/           Build, database deploy, function deploy, signed release
+supabase/migrations/         Schema, row-level security, limits, audit, hardening (latest: 20261108)
+supabase/functions/          Edge Functions: admin-create-user, admin-manage-user, ai-analyze,
+                             campus-wipe-files, confirm-signup, storage-cleanup
+supabase/diagnostics.sql     Read-only health and security audit (run it after every deploy)
+supabase/tests/              Database and Edge Function tests (run_all.sh, edge/run.ts)
+.github/workflows/           Build, backend deploy, signed release
 .env.example                 Build settings template
 ```
 
 ## Build the app
 
-1. Create a Supabase project and apply the schema:
-   `supabase link --project-ref YOUR_PROJECT_REF && supabase db push`
-2. Copy `.env.example` to `.env` and set `SUPABASE_URL` and `SUPABASE_ANON_KEY`
-   (the publishable/anon key only; never the service-role key).
-3. Build: `./gradlew :app:assembleDebug` (a release build fails fast if the two values are missing).
-4. Deploy the edge function: `supabase functions deploy campus-wipe-files`.
+1. Create a Supabase project, then `supabase link --project-ref YOUR_PROJECT_REF && supabase db push`.
+2. Copy `.env.example` to `.env`; set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (publishable/anon key only, never the service-role key).
+3. `./gradlew :app:assembleDebug`. A release build fails fast if the two values are missing.
 
-## App manager login
+## Deploy the backend
 
-The manager's email (`abcplan2023@gmail.com`) is registered by the migration `20261030000000_platform_manager.sql`.
-The password is never stored in Git or in the app. Create the account in the Supabase dashboard:
-Authentication -> Users -> Add user -> email above, a strong password, "Auto Confirm User" ticked.
-It becomes the app manager automatically. Administrators then enrol an authenticator app on first sign-in.
+Run the **Deploy backend** workflow (or `supabase db push` and `supabase functions deploy <name>`;
+`confirm-signup` needs `--no-verify-jwt`). Then:
 
-## Release (GitHub Actions)
+* Run `supabase/diagnostics.sql`: checks 1-4 must return no rows.
+* Dashboard: Authentication -> Providers -> Email -> **Confirm email OFF** (people wait for an administrator to approve them).
+* Set the secret `CLEANUP_SECRET` and schedule the `storage-cleanup` function every 15 minutes
+  (header `x-cleanup-secret`). It removes files of deleted rows and wiped campuses.
+* Enable the `pg_cron` extension to auto-close quiz attempts and prune old notifications.
+
+## App manager
+
+The manager's address is reserved in the database and nobody can claim it by signing up. Create the account in the
+dashboard (Authentication -> Users -> Add user, "Auto Confirm User" ticked), then run once in the SQL editor:
+
+```sql
+select public.owner_make_manager('abcplan2023@gmail.com', 'a-long-new-password');
+```
+
+This sets the password, ends any existing session on that account and attaches the manager profile.
+Administrators then enrol an authenticator app on first sign-in.
+
+## Release
 
 Repository secrets: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,
-`SUPABASE_PROJECT_ID`, `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`.
-Push a tag such as `v1.0.1` to build and publish a signed APK and AAB.
+`SUPABASE_PROJECT_ID`, `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, optional `AI_API_KEY`,
+`AI_PROVIDER`, `AI_MODEL`, `CLEANUP_SECRET`. Push a tag such as `v1.0.1` to publish a signed APK and AAB.
 
 ## Security model
 
-The server enforces university membership, account approval, course enrolment, programme audience and
-role through row-level security on every query. The app only filters for convenience.
-Never put the service-role key, database password or access token in the app, in `.env` or in Git.
-
-## New in this version
-
-* **Stays signed in** until Sign out (tokens kept encrypted with the Android Keystore).
-* **Double Back to exit**; Back inside a sheet with the keyboard open only closes the keyboard.
-* **People management** (campus administrators: Admin -> People): students per programme, class representatives chosen from
-  their programme, lecturers, admins; edit, change role, reset password, change login, pause/resume, delete.
-  **App manager** (campus -> Manage -> Administrators): reset passwords, edit logins, change role, pause/resume admins.
-* **Real AI** document analysis through the `ai-analyze` Edge Function (Gemini or Claude). See `.env.example`.
-
-Deploy: run, in order, `20261104000000_admin_people_and_ai.sql`, `20261105000000_admin_messaging.sql`, `20261106000000_programme_courses.sql`, `20261107000000_auto_confirm_pending.sql`, then deploy the functions
-`admin-manage-user` and `ai-analyze` (or run the **Deploy backend** workflow).
-
-### No emailed sign-up codes
-People who register wait for an administrator to approve them; no code is emailed. In the Supabase dashboard
-turn **Authentication → Providers → Email → "Confirm email" OFF** (recommended). If it is still on, the app
-finishes the sign-up through the `confirm-signup` function (deploy it with `--no-verify-jwt`).
+The server enforces campus membership, account approval, enrolment, audience and role through row-level security on
+every query; the app only filters for convenience. Never put the service-role key, database password or access token in
+the app, in `.env` or in Git. The session is stored encrypted with the Android Keystore; app backup is off.

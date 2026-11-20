@@ -29,7 +29,6 @@ import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.viewmodel.CampusViewModel
 import kotlinx.coroutines.launch
 
-/** Lets any signed-in person (student, lecturer, administrator) replace the password they were given. */
 @Composable
 fun ChangePasswordCard(viewModel: CampusViewModel) {
   var open by remember { mutableStateOf(false) }

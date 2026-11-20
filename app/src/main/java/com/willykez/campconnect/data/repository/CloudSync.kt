@@ -14,16 +14,13 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** A file that lives in cloud storage and is not on this phone yet. */
 data class FileRef(val kind: String, val itemId: String, val bucket: String, val path: String, val size: Long)
 
-/** A student a lecturer or administrator may make a class representative. */
 data class ClassMember(val id: String, val name: String, val number: String, val programme: String, val isRep: Boolean)
 
-/** Everything one person is allowed to see, as the server returned it. */
 data class CloudSnapshot(
-  val courses: Map<String, String>,                 // CS210 -> title
-  val programmes: Map<String, Set<String>>,         // programme name -> course codes
+  val courses: Map<String, String>,
+  val programmes: Map<String, Set<String>>,
   val rooms: List<String>,
   val enrolled: Set<String>,
   val teaches: Set<String>,
@@ -39,12 +36,10 @@ data class CloudSnapshot(
   val quizzes: List<Quiz>,
   val attempts: List<QuizAttempt>,
   val files: List<FileRef>,
-  /** course -> lecturers (id to name), for a class representative scheduling a class. */
   val courseLecturers: Map<String, List<Pair<String, String>>>,
   val classMembers: List<ClassMember>
 )
 
-/** Opened or downloaded copies of cloud files, kept on the phone so documents also open offline. */
 object CloudFiles {
   private fun dir(): File? = Backend.appContext?.let { File(it.filesDir, "cloud").apply { mkdirs() } }
 
@@ -60,7 +55,6 @@ object CloudFiles {
     return try { f.writeBytes(bytes); Uri.fromFile(f).toString() } catch (e: Exception) { null }
   }
 
-  /** Reads a picked file (content:// or file://). */
   fun read(uriString: String?): ByteArray? {
     val ctx = Backend.appContext ?: return null
     val uri = uriString?.let { Uri.parse(it) } ?: return null
@@ -72,11 +66,9 @@ object CloudFiles {
     return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: fallback
   }
 
-  /** Clears everything kept for this phone (sign-out). */
   fun clear() { dir()?.listFiles()?.forEach { it.delete() } }
 }
 
-/** Reads the server into the app's own models, and maps app values back to what the server stores. */
 class CloudSync(private val remote: RemoteAdmin) {
 
   companion object {
@@ -92,7 +84,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       return SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.ENGLISH).apply { timeZone = eat }.format(Date(m)) + " EAT"
     }
 
-    /** The server wants an ISO moment; the app keeps deadline text such as "Friday, 24 Oct 2026 • 17:00 EAT". */
     fun isoOf(millis: Long): String =
       SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(millis))
 
@@ -114,7 +105,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       ContentApprovalStatus.DISAPPROVED -> "rejected"
     }
 
-    /** Plain-words reason for a server refusal. */
     fun friendly(r: RemoteResult): String {
       val t = (r.detail + " " + r.body).lowercase()
       return when {
@@ -126,11 +116,31 @@ class CloudSync(private val remote: RemoteAdmin) {
         t.contains("responsible_not_for_course") -> "That lecturer does not teach this course."
         t.contains("file_not_uploaded") -> "The file did not upload. Check your connection and try again."
         t.contains("lecturer_has_classes") -> "That lecturer still has live classes in this course."
+        t.contains("lecturer_busy") -> "That lecturer already has a class at that time."
+        t.contains("bad_storage_path") -> "That file could not be attached. Please pick it again."
+        t.contains("too_many_rows") -> "That import is too large. Split it into files of at most 2,000 rows."
+        t.contains("email_reserved") -> "That email address is reserved."
+        t.contains("campus_paused") -> "Your campus is paused at the moment."
         r.error == RemoteError.NOT_ALLOWED -> "You are not allowed to do that."
         r.error == RemoteError.NETWORK -> "No connection. Your change was not saved."
         else -> "The server could not save that. Please try again."
       }
     }
+  }
+
+  suspend fun auditLog(me: UserProfile): List<AuditLog>? {
+    val rows = remote.query("audit_log", "select=id,actor_name,actor_role,action,details,at&order=at.desc&limit=200") ?: return null
+    val out = mutableListOf<AuditLog>()
+    rows.each {
+      val actor = it.optString("actor_name").ifBlank { "System" }
+      val role = it.optString("actor_role")
+      out.add(AuditLog(
+        id = it.optString("id"), universityId = me.universityId,
+        actor = if (role.isBlank()) actor else "$actor ($role)",
+        action = it.optString("action"), details = it.optString("details"), timestamp = stamp(it.optString("at"))
+      ))
+    }
+    return out
   }
 
   private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optString(k).takeIf { it.isNotBlank() }
@@ -139,9 +149,7 @@ class CloudSync(private val remote: RemoteAdmin) {
 
   private inline fun JSONArray.each(block: (JSONObject) -> Unit) { for (i in 0 until length()) block(getJSONObject(i)) }
 
-  /** Reads everything for [me]. Null when the catalogue could not be read (offline). */
   suspend fun pull(me: UserProfile, uniCode: String): CloudSnapshot? {
-    // --- campus catalogue ---
     val courseRows = remote.query("courses", "select=code,short_code,title&order=short_code&limit=2000") ?: return null
     val courses = mutableMapOf<String, String>()
     courseRows.each { courses[it.optString("short_code")] = it.optString("title") }
@@ -156,7 +164,6 @@ class CloudSync(private val remote: RemoteAdmin) {
     val rooms = mutableListOf<String>()
     rows("rooms", "select=name&order=name").each { rooms.add(it.optString("name")) }
 
-    // --- people (names that are public inside the campus) and my own links ---
     class Person(val name: String, val role: String, val rep: Boolean)
     val people = mutableMapOf<String, Person>()
     rows("staff_directory", "select=id,full_name,role,is_class_rep").each {
@@ -172,7 +179,6 @@ class CloudSync(private val remote: RemoteAdmin) {
     fun titleOf(course: String): String = courses[course] ?: course
     fun nameOf(id: String): String = people[id]?.name ?: if (id == me.id) me.fullName else "Staff"
 
-    // --- timetable ---
     val sessions = mutableListOf<ClassSession>()
     rows("class_sessions", "select=*&order=day_of_week,start_time&limit=2000").each {
       val c = short(it.optString("course_code"))
@@ -188,7 +194,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       ))
     }
 
-    // --- announcements ---
     val reads = mutableSetOf<String>()
     rows("announcement_reads", "select=announcement_id&user_id=eq.${me.id}&limit=2000").each { reads.add(it.optString("announcement_id")) }
     val files = mutableListOf<FileRef>()
@@ -219,7 +224,6 @@ class CloudSync(private val remote: RemoteAdmin) {
         isRetracted = !it.isNull("retracted_at"), approvalStatus = approval(it.optString("approval"))
       ))
     }
-    // Reach numbers for the notices this person wrote (only the author and the registry may ask).
     val mine = announcements.filter { it.authorId == me.id }.take(15)
     val stats = mutableMapOf<String, Pair<Int, Int>>()
     for (a in mine) {
@@ -228,7 +232,6 @@ class CloudSync(private val remote: RemoteAdmin) {
     }
     val announcementsOut = announcements.map { a -> stats[a.id]?.let { (d, o) -> a.copy(totalStudents = d, readCount = o) } ?: a.copy(totalStudents = 0) }
 
-    // --- materials ---
     val materials = mutableListOf<StudyMaterial>()
     rows("study_materials", "select=*&order=created_at.desc&limit=500").each {
       val c = short(it.optString("course_code"))
@@ -245,7 +248,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       ))
     }
 
-    // --- assignments and calendar entries (deadlines) ---
     val done = mutableSetOf<String>()
     rows("deadline_done", "select=deadline_id&limit=2000").each { done.add(it.optString("deadline_id")) }
     val submittedBy = mutableMapOf<String, Int>()
@@ -265,7 +267,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       ))
     }
 
-    // --- submitted work (a student sees their own; a lecturer the work for their courses) ---
     val names = mutableMapOf<String, Pair<String, String>>()
     val members = mutableMapOf<String, ClassMember>()
     if (me.role != Role.STUDENT) {
@@ -303,15 +304,14 @@ class CloudSync(private val remote: RemoteAdmin) {
           uriString = CloudFiles.cachedUri("submissions", path), fileName = it.optString("file_name"),
           fileSize = sizeText(it.optLong("size_bytes")), mimeType = it.optString("mime_type").ifBlank { "application/pdf" }),
         submittedAt = stamp(it.optString("submitted_at")), grade = it.str("grade"), feedback = it.str("feedback"),
-        approvalStatus = if (it.str("grade") != null) ContentApprovalStatus.APPROVED else ContentApprovalStatus.PENDING_REVIEW
+        approvalStatus = if (it.str("grade") != null) ContentApprovalStatus.APPROVED else ContentApprovalStatus.PENDING_REVIEW,
+        isLate = it.optBoolean("is_late")
       ))
     }
     val deadlinesOut = deadlines.map { d ->
-      val total = if (d.courseCode == "ACADEMIC") 0 else 0
-      d.copy(submittedCount = if (me.role == Role.STUDENT) 0 else submittedBy[d.id] ?: 0, totalStudents = total)
+      d.copy(submittedCount = if (me.role == Role.STUDENT) 0 else submittedBy[d.id] ?: 0, totalStudents = 0)
     }
 
-    // --- notifications ---
     val notifications = mutableListOf<NotificationItem>()
     rows("notifications", "select=*&order=created_at.desc&limit=150").each {
       notifications.add(NotificationItem(
@@ -324,7 +324,6 @@ class CloudSync(private val remote: RemoteAdmin) {
       ))
     }
 
-    // --- quizzes (answers only for people who may see them: the server decides) ---
     val quizzes = mutableListOf<Quiz>()
     val attempts = mutableListOf<QuizAttempt>()
     val quizRows = rows("quizzes", "select=*&order=opens_at.desc&limit=200")

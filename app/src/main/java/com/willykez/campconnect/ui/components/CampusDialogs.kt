@@ -7,54 +7,42 @@ import com.willykez.campconnect.util.DeadlineTime
 import com.willykez.campconnect.data.docs.DocumentKind
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Attachment
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditLocation
 import androidx.compose.material.icons.filled.EventBusy
-import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +55,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.willykez.campconnect.data.model.Announcement
 import com.willykez.campconnect.data.model.AnnouncementPriority
 import com.willykez.campconnect.data.model.AttachmentFile
@@ -76,7 +63,6 @@ import com.willykez.campconnect.data.model.ClassSession
 import com.willykez.campconnect.data.model.ContentApprovalStatus
 import com.willykez.campconnect.data.model.DeadlineItem
 import com.willykez.campconnect.data.model.Role
-import com.willykez.campconnect.data.model.StudyMaterial
 import com.willykez.campconnect.data.model.UserProfile
 import com.willykez.campconnect.data.repository.AudienceOption
 import com.willykez.campconnect.ui.theme.DangerRed
@@ -175,7 +161,6 @@ fun AnnouncementDetailDialog(
       lineHeight = MaterialTheme.typography.bodyLarge.lineHeight
     )
 
-    // Attachment Card with Built-in Document Preview
     if (announcement.attachment != null) {
       Spacer(modifier = Modifier.height(16.dp))
       Surface(
@@ -227,7 +212,6 @@ fun AnnouncementDetailDialog(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    // Delivery and open counts: only for the sender and the registry, never for students
     if (showReadStats) {
       val opened = announcement.readCount.coerceAtMost(announcement.totalStudents)
       val notOpened = (announcement.totalStudents - opened).coerceAtLeast(0)
@@ -258,7 +242,6 @@ fun AnnouncementDetailDialog(
       }
     }
 
-    // Admin & Uploader Management Row
     if (canModerate) {
       Spacer(modifier = Modifier.height(16.dp))
       HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
@@ -269,7 +252,6 @@ fun AnnouncementDetailDialog(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        // Admin Approval Toggles
         if (currentUserRole == Role.ADMIN) {
           Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (announcement.approvalStatus != ContentApprovalStatus.APPROVED) {
@@ -300,7 +282,6 @@ fun AnnouncementDetailDialog(
           Spacer(modifier = Modifier.width(1.dp))
         }
 
-        // Retract, edit & delete actions for Author or Admin
         Row(verticalAlignment = Alignment.CenterVertically) {
           if (!announcement.isRetracted) {
             OutlinedButton(
@@ -400,7 +381,6 @@ fun PublishAnnouncementDialog(
         }
       }
 
-      // A notice for a course can be on behalf of the lecturer responsible for it.
       val forLecturers = if (chosen?.type == AudienceType.COURSE) lecturersFor(chosen.code) else emptyList()
       if (forLecturers.isNotEmpty()) {
         Spacer(modifier = Modifier.height(10.dp))
@@ -448,7 +428,6 @@ fun PublishAnnouncementDialog(
 
       Spacer(modifier = Modifier.height(12.dp))
 
-      // Integrated File Picker for Announcement Attachment
       Text(
         text = "Attach Official PDF Document / Notice Photo:",
         style = MaterialTheme.typography.labelMedium,
@@ -777,7 +756,6 @@ fun UploadMaterialDialog(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Integrated File Picker
     Text(
       text = "Select Document File (PDF or Image):",
       style = MaterialTheme.typography.labelMedium,
@@ -917,7 +895,6 @@ fun AddDeadlineDialog(
   }
 }
 
-/** Edit or reschedule a deadline. Students are told when the date changes. */
 @Composable
 fun EditDeadlineSheet(
   deadline: DeadlineItem,

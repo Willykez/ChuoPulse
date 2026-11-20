@@ -3,7 +3,6 @@ package com.willykez.campconnect.data.docs
 import com.willykez.campconnect.data.supabase.Backend
 import org.json.JSONObject
 
-/** Real AI analysis through the `ai-analyze` Edge Function. The key never reaches the phone. */
 object AiAnalysisClient {
 
   data class Result(
@@ -17,7 +16,6 @@ object AiAnalysisClient {
 
   sealed interface Outcome {
     data class Success(val result: Result) : Outcome
-    /** AI could not be used; [reason] is a short code. The on-device analysis is used instead. */
     data class Unavailable(val reason: String) : Outcome
   }
 

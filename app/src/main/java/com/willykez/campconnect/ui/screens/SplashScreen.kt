@@ -38,10 +38,6 @@ import com.willykez.campconnect.ui.theme.PrimaryLightBlue
 import com.willykez.campconnect.util.AppBrand
 import kotlinx.coroutines.delay
 
-/**
- * The first thing people see: the logo eases in, the name and tagline follow, then the app opens.
- * It is purely visual (about 1.7 seconds) and never blocks anything that is loading behind it.
- */
 @Composable
 fun SplashScreen(swahili: Boolean, onFinished: () -> Unit) {
   com.willykez.campconnect.ui.theme.ActivityStatusBarIcons(darkIcons = false)

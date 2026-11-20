@@ -8,7 +8,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Local-first document library. Cloud writes are optional until a valid user session is supplied. */
 class ProcessedDocumentRepository(
   context: Context,
   private val supabase: SupabaseClient = SupabaseClient()
@@ -16,14 +15,8 @@ class ProcessedDocumentRepository(
   private val dao = AppDatabase.getInstance(context).processedDocumentDao()
 
   fun observeDocuments(): Flow<List<ProcessedDocumentEntity>> = dao.getAllDocuments()
-  fun observeByCourse(courseCode: String): Flow<List<ProcessedDocumentEntity>> = dao.getDocumentsByCourse(courseCode)
-  fun search(query: String): Flow<List<ProcessedDocumentEntity>> =
-    if (query.isBlank()) observeDocuments() else dao.searchDocuments(query.trim())
-  suspend fun getById(id: String) = dao.getDocumentById(id)
   suspend fun deleteLocal(id: String) = withContext(Dispatchers.IO) { dao.deleteDocumentById(id) }
-  suspend fun deleteAllLocal() = withContext(Dispatchers.IO) { dao.deleteAllDocuments() }
 
-  /** Saves locally first so the item is available offline even if the network is unavailable. */
   suspend fun save(document: ProcessedDocumentEntity, accessToken: String? = null, uploaderId: String? = null): CloudSyncResult {
     withContext(Dispatchers.IO) { dao.insertDocument(document) }
     if (accessToken.isNullOrBlank() || uploaderId.isNullOrBlank() || !supabase.isConfigured) return CloudSyncResult.LOCAL_ONLY

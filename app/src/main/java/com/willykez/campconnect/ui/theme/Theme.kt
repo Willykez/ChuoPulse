@@ -67,7 +67,6 @@ private val LightColorScheme = lightColorScheme(
   error = DangerRed
 )
 
-// One set of corner sizes for the whole app, so cards, fields, dialogs and buttons feel related.
 private val AppShapes = Shapes(
   extraSmall = RoundedCornerShape(6.dp),
   small = RoundedCornerShape(10.dp),
@@ -89,8 +88,6 @@ fun CampusConnectTheme(
   }
   val colorScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme
 
-  // The app draws behind the status and navigation bars; the bars are transparent and their icons
-  // follow the app's own light/dark choice (not only the phone's).
   val view = LocalView.current
   if (!view.isInEditMode) {
     SideEffect {

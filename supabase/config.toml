@@ -36,7 +36,11 @@ password_requirements = ""   # length only; no forced symbols or digits
 [auth.email]
 enable_signup = true
 double_confirm_changes = true
-enable_confirmations = true      # the six-digit email code proves the email is theirs
+# OFF to match the product: people sign in at once and a campus administrator approves them (migration
+# 20261103). The hosted project's Authentication -> Providers -> Email -> "Confirm email" must match.
+# This used to be true while the app/functions assumed it was off. Security no longer depends on it:
+# the manager's e-mail is reserved in the database (migration 20261108).
+enable_confirmations = false
 secure_password_change = true
 max_frequency = "60s"
 otp_length = 6

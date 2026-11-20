@@ -12,23 +12,18 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.unit.sp
 import com.willykez.campconnect.ui.theme.DangerRedLight
 import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.SuccessGreenLight
 import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.ui.theme.DeepBlueDark
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,22 +32,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -60,14 +49,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -83,19 +68,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.data.repository.CampusSummary
-import com.willykez.campconnect.data.repository.WipeScope
 import com.willykez.campconnect.ui.components.AppBottomSheet
-import com.willykez.campconnect.ui.components.ConfirmSheet
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/**
- * The app manager's (owner's) console. It lists every campus with its status and totals, creates new
- * campuses with their first administrator, switches a campus offline for maintenance, edits campus
- * details, adds people and can delete data from any campus. It never shows what a campus wrote:
- * campus administrators run their own campuses.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlatformScreen(viewModel: CampusViewModel) {
@@ -108,11 +85,11 @@ fun PlatformScreen(viewModel: CampusViewModel) {
   val snackbar = remember { SnackbarHostState() }
   var creating by remember { mutableStateOf(false) }
   var managing by remember { mutableStateOf<String?>(null) }
-  var quick by remember { mutableStateOf<Pair<String, Int>?>(null) } // campus id to action (1 offline, 2 edit, 3 add person)
+  var quick by remember { mutableStateOf<Pair<String, Int>?>(null) }
   var tab by remember { mutableStateOf(0) }
   var aiOpen by remember { mutableStateOf(false) }
   var query by remember { mutableStateOf("") }
-  var filter by remember { mutableStateOf(0) } // 0 all, 1 online, 2 offline, 3 waiting
+  var filter by remember { mutableStateOf(0) }
 
   LaunchedEffect(message, managing) {
     if (managing != null) return@LaunchedEffect
@@ -133,7 +110,6 @@ fun PlatformScreen(viewModel: CampusViewModel) {
     modifier = Modifier.testTag("platform_screen")
   ) { padding ->
     Column(modifier = Modifier.fillMaxSize().padding(padding).navigationBarsPadding()) {
-      // Header
       Box(
         modifier = Modifier
           .fillMaxWidth()

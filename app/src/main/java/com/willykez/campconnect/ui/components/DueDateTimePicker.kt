@@ -33,10 +33,6 @@ import com.willykez.campconnect.util.DeadlineTime
 import java.util.Calendar
 import java.util.TimeZone
 
-/**
- * Pick a due date, then a due time, instead of typing a date as text.
- * [valueText] and [onValueChange] use the app's deadline text, e.g. "Friday, 24 Oct 2026 • 17:00 EAT".
- */
 @Composable
 fun DueDateTimeField(
   valueText: String,
@@ -72,7 +68,6 @@ fun DueDateTimeField(
   }
 
   if (showDate) {
-    // The calendar works in UTC midnight of the chosen day; turn the current due date into that.
     val local = Calendar.getInstance(DeadlineTime.zone).apply { timeInMillis = current }
     val utcMidnight = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
       clear()

@@ -4,16 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.MeetingRoom
@@ -23,10 +19,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,10 +42,6 @@ import com.willykez.campconnect.viewmodel.CampusViewModel
 
 private enum class SessionPicker { SUBJECT, LECTURER, START, END, ROOM }
 
-/**
- * Add a class to the timetable. Pick the subject, the lecturer responsible, the day and time, then a
- * room: rooms already in use at that time are shown but cannot be chosen.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddSessionSheet(viewModel: CampusViewModel, initialDay: Int, onDismiss: () -> Unit) {
@@ -72,11 +62,9 @@ fun AddSessionSheet(viewModel: CampusViewModel, initialDay: Int, onDismiss: () -
   val rooms = viewModel.roomsWithAvailability(day, start, end)
   val times = remember { (6..20).flatMap { h -> listOf("%02d:00".format(h), "%02d:30".format(h)) } }
 
-  // The person who is responsible is usually the lecturer adding the class, or the only one who teaches it.
   LaunchedEffect(course) {
     lecturerId = lecturers.firstOrNull { it.id == user.id }?.id ?: lecturers.singleOrNull()?.id
   }
-  // A room that becomes busy after the time changes is un-chosen, so a clash cannot be saved by accident.
   LaunchedEffect(day, start, end) {
     if (rooms.any { it.name.equals(room, ignoreCase = true) && it.busyWith != null }) room = ""
   }
@@ -184,7 +172,6 @@ fun AddSessionSheet(viewModel: CampusViewModel, initialDay: Int, onDismiss: () -
 
     Spacer(modifier = Modifier.height(10.dp))
     if (rooms.isEmpty()) {
-      // The campus has not added its rooms yet: type one.
       OutlinedTextField(
         value = room,
         onValueChange = { room = it },
@@ -233,7 +220,6 @@ fun AddSessionSheet(viewModel: CampusViewModel, initialDay: Int, onDismiss: () -
       selectedId = start,
       onSelect = { picked ->
         start = picked
-        // Keep the class two hours long unless the end is still later.
         if (end <= picked) end = times.firstOrNull { it > picked && it >= shiftHours(picked, 2) } ?: times.last()
         error = null
       },

@@ -28,8 +28,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.PauseCircle
+import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
@@ -62,7 +62,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.data.model.Role
-import com.willykez.campconnect.data.repository.ManagedAdmin
 import com.willykez.campconnect.data.repository.ManagedPerson
 import com.willykez.campconnect.data.repository.ProgrammeRef
 import com.willykez.campconnect.ui.components.AppBottomSheet
@@ -76,10 +75,6 @@ import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.viewmodel.CampusViewModel
 import kotlinx.coroutines.launch
-
-// ======================================================================================
-// Campus administrator: every person on the campus, by role, by programme.
-// ======================================================================================
 
 private enum class PeopleTab { STUDENTS, REPS, LECTURERS, ADMINS }
 
@@ -96,11 +91,10 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
   var adding by remember { mutableStateOf<Role?>(null) }
   var choosingReps by remember { mutableStateOf(false) }
   var openPerson by remember { mutableStateOf<String?>(null) }
-  var statusFilter by remember { mutableStateOf(0) } // 0 all, 1 paused, 2 pending
+  var statusFilter by remember { mutableStateOf(0) }
   var bulk by remember { mutableStateOf<Role?>(null) }
   val context = androidx.compose.ui.platform.LocalContext.current
 
-  // Always one programme selected, so students are never shown "all in one place".
   val selected = programmeId?.takeIf { id -> programmes.any { it.id == id } } ?: programmes.firstOrNull()?.id
   val selectedName = programmes.firstOrNull { it.id == selected }?.name.orEmpty()
 
@@ -139,7 +133,6 @@ fun PeopleManagementTab(viewModel: CampusViewModel, modifier: Modifier = Modifie
 
     Spacer(Modifier.height(10.dp))
 
-    // Programme chooser: students and class representatives are always seen one programme at a time.
     if (tab == PeopleTab.STUDENTS || tab == PeopleTab.REPS) {
       if (programmes.isEmpty()) {
         Text(
@@ -333,11 +326,6 @@ private fun ClassRepChooserSheet(viewModel: CampusViewModel, programmeName: Stri
   }
 }
 
-// ======================================================================================
-// One person: details and every action. Used by campus administrators (students, lecturers)
-// and by the app manager (campus administrators).
-// ======================================================================================
-
 @Composable
 fun PersonManageSheet(
   viewModel: CampusViewModel,
@@ -384,6 +372,7 @@ fun PersonManageSheet(
       if (paused) Icons.Default.PlayCircle else Icons.Default.PauseCircle,
       if (paused) viewModel.t("Resume account", "Rudisha akaunti") else viewModel.t("Pause account", "Simamisha akaunti"), "person_pause"
     ) { error = null; if (paused) run { viewModel.pausePerson(id, false) } else mode = "pause" }
+    if (allowDelete) ActionRow(Icons.Default.PersonOff, viewModel.t("Erase personal data", "Futa taarifa binafsi"), "person_erase", DangerRed) { error = null; mode = "erase" }
     if (allowDelete) ActionRow(Icons.Default.Delete, viewModel.t("Delete account", "Futa akaunti"), "person_delete", DangerRed) { error = null; mode = "delete" }
     Spacer(Modifier.height(12.dp))
   }
@@ -400,6 +389,13 @@ fun PersonManageSheet(
       message = viewModel.t("They are signed out and cannot sign in or see anything until you resume the account. Nothing is deleted.", "Atatolewa na hataweza kuingia wala kuona chochote hadi urudishe akaunti. Hakuna kinachofutwa."),
       confirmLabel = viewModel.t("Pause", "Simamisha"), dismissLabel = viewModel.t("Cancel", "Ghairi"), destructive = false,
       onConfirm = { run { viewModel.pausePerson(id, true) } }, onDismiss = { mode = "" }
+    )
+    "erase" -> ConfirmSheet(
+      title = viewModel.t("Erase personal data of $name?", "Futa taarifa binafsi za $name?"),
+      message = viewModel.t("Their name, email and numbers are removed and the account is locked for good. Work they submitted and grades stay, shown as Deleted user. Use this for a data-deletion request. This cannot be undone.", "Jina, barua pepe na namba zao vinaondolewa na akaunti inafungwa kabisa. Kazi walizowasilisha na alama vinabaki, vikionyeshwa kama Deleted user. Tumia hii kwa ombi la kufutiwa taarifa. Haiwezi kurudishwa."),
+      confirmLabel = viewModel.t("Erase", "Futa"), dismissLabel = viewModel.t("Cancel", "Ghairi"),
+      onConfirm = { scope.launch { busy = true; val e = viewModel.erasePerson(id); busy = false; if (e == null) onDismiss() else { error = e; mode = "" } } },
+      onDismiss = { mode = "" }
     )
     "delete" -> ConfirmSheet(
       title = viewModel.t("Delete $name?", "Futa $name?"),
@@ -542,61 +538,6 @@ private fun ChangeRoleSheet(
   }
   if (picking) PickerSheet(title = viewModel.t("Programme", "Programu"), options = programmes.map { PickerItem(it.id, it.name) }, selectedId = prog, onSelect = { prog = it }, onDismiss = { picking = false })
 }
-
-// ======================================================================================
-// App manager: the administrators of one campus.
-// ======================================================================================
-
-@Composable
-fun CampusAdminsSheet(viewModel: CampusViewModel, campusId: String, campusCode: String, campusName: String, onDismiss: () -> Unit) {
-  val admins by viewModel.managedAdmins.collectAsState()
-  LaunchedEffect(Unit) { viewModel.refreshPlatformAdmins() }
-  val mine = admins.filter { it.campusCode.equals(campusCode, true) }
-  var open by remember { mutableStateOf<String?>(null) }
-  var adding by remember { mutableStateOf(false) }
-
-  AppBottomSheet(
-    onDismissRequest = onDismiss, title = viewModel.t("Administrators", "Wasimamizi"), subtitle = campusName, tag = "campus_admins_sheet",
-    footer = {
-      Button(
-        onClick = { adding = true }, shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = DeepBlue),
-        modifier = Modifier.weight(1f).height(56.dp).testTag("add_admin_btn")
-      ) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(viewModel.t("Add administrator", "Ongeza msimamizi"), fontWeight = FontWeight.SemiBold) }
-    }
-  ) {
-    Spacer(Modifier.height(6.dp))
-    Text(viewModel.t("A campus can have more than one administrator.", "Chuo kinaweza kuwa na wasimamizi zaidi ya mmoja."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(8.dp))
-    if (mine.isEmpty()) Text(viewModel.t("No administrators yet.", "Hakuna wasimamizi bado."), color = MaterialTheme.colorScheme.onSurfaceVariant)
-    mine.forEach { a ->
-      Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { open = a.id }.padding(vertical = 10.dp).testTag("admin_row_${a.id}"), verticalAlignment = Alignment.CenterVertically) {
-        Avatar(a.name); Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-          Text(a.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-          Text(a.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        StatusPill(a.status)
-        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-      }
-    }
-    Spacer(Modifier.height(8.dp))
-  }
-
-  if (adding) AddCampusUserSheet(viewModel, campusId, allowAdmin = true, onDismiss = { adding = false }, initialRole = Role.ADMIN, onlyRole = true)
-  open?.let { id ->
-    mine.firstOrNull { it.id == id }?.let { a: ManagedAdmin ->
-      PersonManageSheet(
-        viewModel = viewModel, id = a.id, name = a.name, email = a.email, role = "admin", status = a.status, number = a.number,
-        programmeId = null, programmeName = "", department = "", isClassRep = false, programmes = emptyList(),
-        allowRoleChange = true, allowClassRep = false, roleChangeTargets = listOf("lecturer"), onDismiss = { open = null }
-      )
-    } ?: run { open = null }
-  }
-}
-
-// ======================================================================================
-// App manager: AI settings. The key is saved on the server and used for everyone; it is never shown again.
-// ======================================================================================
 
 @Composable
 fun AiSettingsSheet(viewModel: CampusViewModel, onDismiss: () -> Unit) {

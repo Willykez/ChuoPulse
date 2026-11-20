@@ -2,7 +2,6 @@ package com.willykez.campconnect.ui.util
 
 import com.willykez.campconnect.data.model.AppLanguage
 
-/** "14:30" -> "14:30" (24-hour) or "2:30 PM" (12-hour). Anything unparsable is returned as is. */
 fun formatClock(hhmm: String, is24Hour: Boolean): String {
   if (is24Hour) return hhmm
   val parts = hhmm.trim().split(":")
@@ -16,10 +15,6 @@ fun formatClock(hhmm: String, is24Hour: Boolean): String {
   return "%d:%02d %s".format(h12, minute, suffix)
 }
 
-/**
- * The honest freshness line shown at the top of lists.
- * Online and fresh -> "Synced just now". Offline -> "Last synced 2 hours ago, offline".
- */
 fun syncStatusText(isOffline: Boolean, lastSyncedAt: Long, now: Long, language: AppLanguage): String {
   val sw = language == AppLanguage.SWAHILI
   if (lastSyncedAt <= 0L) {

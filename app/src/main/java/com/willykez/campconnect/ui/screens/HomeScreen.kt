@@ -28,15 +28,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -45,9 +42,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,14 +59,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.willykez.campconnect.data.model.AccountStatus
 import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.ui.components.AnnouncementCard
 import com.willykez.campconnect.ui.components.DeadlineCard
 import com.willykez.campconnect.ui.components.OfflineBanner
 import com.willykez.campconnect.ui.components.SessionCard
-import com.willykez.campconnect.ui.components.StatusBadge
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.WarmAmber
@@ -120,7 +113,7 @@ fun HomeScreen(
       val locale = java.util.Locale.forLanguageTag(if (language == com.willykez.campconnect.data.model.AppLanguage.SWAHILI) "sw" else "en")
       val dateText = moment.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM", locale))
       val timeText = moment.format(java.time.format.DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm a", locale))
-      val todayNumber = moment.dayOfWeek.value // 1 = Monday ... 7 = Sunday, from the phone's real clock
+      val todayNumber = moment.dayOfWeek.value
       val classesToday = sessions.count { it.dayOfWeek == todayNumber && it.status != SessionStatus.CANCELLED }
       val openDeadlines = deadlines.count { !it.isCompleted }
       val firstName = user.fullName.split(" ").firstOrNull() ?: user.fullName
@@ -130,7 +123,6 @@ fun HomeScreen(
           .clip(RoundedCornerShape(26.dp))
           .background(Brush.linearGradient(listOf(DeepBlueDark, DeepBlue, PrimaryLightBlue)))
           .drawBehind {
-            // Soft rings in the corner give the card depth without adding anything to read
             drawCircle(Color.White.copy(alpha = 0.07f), radius = size.minDimension * 0.55f, center = Offset(size.width * 0.95f, size.height * 0.05f))
             drawCircle(Color.White.copy(alpha = 0.06f), radius = size.minDimension * 0.35f, center = Offset(size.width * 0.78f, size.height * 1.0f))
           }
@@ -200,7 +192,6 @@ fun HomeScreen(
       }
     }
 
-    // Pending Account Warning (if user status is PENDING)
     if (user.status == AccountStatus.PENDING) {
       item {
         Card(
@@ -237,7 +228,6 @@ fun HomeScreen(
       }
     }
 
-    // Offline / Sync Status Banner
     item {
       OfflineBanner(
         isOffline = isOffline,
@@ -246,10 +236,8 @@ fun HomeScreen(
       )
     }
 
-    // Role-specific Home Content
     when (user.role) {
       Role.STUDENT -> {
-        // Next Upcoming Deadline
         val nextDeadline = deadlines.firstOrNull { !it.isCompleted }
         if (nextDeadline != null) {
           item {
@@ -262,7 +250,6 @@ fun HomeScreen(
           }
         }
 
-        // Highlighted Latest Announcement
         val topAnnouncement = announcements.firstOrNull()
         if (topAnnouncement != null) {
           item {
@@ -279,12 +266,10 @@ fun HomeScreen(
           }
         }
 
-        // Today's Classes Section
         item {
           HomeSectionHeader(viewModel.getString("today_classes"), viewModel.t("Full timetable", "Ratiba kamili")) { viewModel.setTab(ScreenTab.TIMETABLE) }
         }
 
-        // Today's sessions, by the phone's real day of the week (Monday = 1)
         val todaySessions = sessions
           .filter { it.dayOfWeek == java.time.LocalDate.now().dayOfWeek.value }
           .sortedBy { it.startTime }
@@ -316,13 +301,12 @@ fun HomeScreen(
             currentUserRole = user.role,
             is24Hour = is24Hour
           )
-        
+
           }
         }
       }
 
       Role.LECTURER -> {
-        // Lecturer Quick Actions
         item {
           Text(
             text = viewModel.getString("quick_actions"),
@@ -374,7 +358,6 @@ fun HomeScreen(
           }
         }
 
-        // Lecturer's Assigned Courses
         item {
           Text(
             text = viewModel.getString("my_assigned_courses"),
@@ -413,7 +396,6 @@ fun HomeScreen(
           }
         }
 
-        // Lecturer's Recent Posts & Read Receipts
         item {
           Text(
             text = "Recent Announcements & Read Receipts",
@@ -433,7 +415,6 @@ fun HomeScreen(
       }
 
       Role.ADMIN -> {
-        // Admin Summary
         item {
           Card(
             shape = RoundedCornerShape(22.dp),
@@ -500,7 +481,6 @@ fun HomeScreen(
         }
 
         if (sessions.isEmpty()) {
-          // Centred in the space that is left, so the screen does not look broken when it is empty
           item {
             Box(
               modifier = Modifier.fillParentMaxWidth().fillParentMaxHeight(0.45f),

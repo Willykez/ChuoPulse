@@ -11,19 +11,13 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** What is kept so the person stays signed in until they choose to sign out. */
 data class SavedSession(
   val userId: String,
   val accessToken: String,
   val refreshToken: String,
-  /** The profile row as the server returned it, so the app can start even with no network. */
   val profileJson: String
 )
 
-/**
- * Keeps the sign-in on the phone, encrypted with a key that never leaves the Android Keystore.
- * Cleared only by an explicit sign-out (or when the server says the sign-in is no longer valid).
- */
 object SessionStore {
   private const val PREFS = "campusconnect_session"
   private const val KEY_ALIAS = "campusconnect_session_key"
@@ -66,7 +60,6 @@ object SessionStore {
     val o = JSONObject(String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8))
     SavedSession(o.getString("u"), o.getString("a"), o.getString("r"), o.getString("p"))
   }.getOrElse {
-    // Unreadable (key lost after a restore, for example): forget it, the person signs in again.
     clear(context)
     null
   }

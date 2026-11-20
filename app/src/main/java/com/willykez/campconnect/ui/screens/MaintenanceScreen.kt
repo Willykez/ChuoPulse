@@ -15,8 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Construction
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -35,10 +33,6 @@ import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.ui.theme.WarmAmberLight
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/**
- * Shown instead of the whole app while a person's campus is in offline (maintenance) mode.
- * Nothing behind it can be used. The campus comes back the moment the app manager switches it on again.
- */
 @Composable
 fun MaintenanceScreen(viewModel: CampusViewModel) {
   val campus by viewModel.myCampus.collectAsState()

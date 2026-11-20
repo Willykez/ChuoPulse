@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api        // ← ADD THIS
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -36,10 +36,6 @@ import com.willykez.campconnect.data.model.UserProfile
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
 
-/**
- * Lets a campus administrator choose which lecturers teach a course.
- * ...
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssignLecturersSheet(
@@ -159,7 +155,6 @@ fun AssignLecturersSheet(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal
               )
-              // ✅ FIX: cohort is String? — null-check before using it
               lecturer.cohort?.let { cohort ->
                 if (cohort.isNotBlank()) {
                   Text(

@@ -57,11 +57,8 @@ class CampusViewModel(
   private val repository: CampusRepository = CampusRepository()
 ) : ViewModel() {
 
-  // ---------- Sign-in state ----------
-
   val session = repository.session
 
-  /** Campuses offered at sign-up, and the programmes each one's administrator has set up (may be none yet). */
   val universities = repository.catalog.universities
   fun programmesFor(universityId: String): List<String> = repository.catalog.programmesFor(universityId)
   fun coursesFor(universityId: String): List<Pair<String, String>> =
@@ -80,7 +77,6 @@ class CampusViewModel(
   val submissions = repository.submissions
   val notifications = repository.notifications
   val pendingUsers = repository.pendingUsers
-  /** Changes whenever any account changes, so screens that list people by course refresh at once. */
   val accounts = repository.auth.accounts
   val auditLogs = repository.auditLogs
   val deletionRequests = repository.deletionRequests
@@ -89,33 +85,24 @@ class CampusViewModel(
   val catalogProgrammes = repository.catalog.programmes
   val catalogCourses = repository.catalog.courses
 
-  /** Phones signed in to the current person's account. */
   val myDevices: StateFlow<List<DeviceSession>> = combine(repository.devices, repository.currentUser) { all, user ->
     all[user.id].orEmpty()
   }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   val thisDeviceId: String = repository.auth.thisDeviceId
 
-  // Active Navigation Tab
   private val _currentTab = MutableStateFlow(ScreenTab.HOME)
   val currentTab: StateFlow<ScreenTab> = _currentTab.asStateFlow()
 
-  // Timetable State
   private val _selectedDay = MutableStateFlow(todayDay())
   val selectedDay: StateFlow<Int> = _selectedDay.asStateFlow()
 
   private val _isWeekView = MutableStateFlow(false)
   val isWeekView: StateFlow<Boolean> = _isWeekView.asStateFlow()
 
-  // Filter for Announcements
-  private val _announcementFilter = MutableStateFlow("ALL")
-  val announcementFilter: StateFlow<String> = _announcementFilter.asStateFlow()
-
-  // Filter for Submissions
   private val _submissionFilterCourse = MutableStateFlow("ALL")
   val submissionFilterCourse: StateFlow<String> = _submissionFilterCourse.asStateFlow()
 
-  // One-line messages shown at the bottom of the screen
   private val _message = MutableStateFlow<String?>(null)
   val message: StateFlow<String?> = _message.asStateFlow()
 
@@ -127,37 +114,25 @@ class CampusViewModel(
     _message.value = null
   }
 
-  // Unread counts
   val unreadNotificationsCount: StateFlow<Int> = notifications.map { list ->
     list.count { !it.isRead }
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-  val unreadAnnouncementsCount: StateFlow<Int> = announcements.map { list ->
-    list.count { !it.isRead }
-  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-  // ---------- Language helper ----------
 
   val isSwahili: Boolean get() = appLanguage.value == AppLanguage.SWAHILI
 
   fun t(english: String, swahili: String): String = if (isSwahili) swahili else english
 
-  // ---------- Authentication ----------
-
   fun checkPassword(password: String, email: String): PasswordCheck = repository.auth.checkPassword(password, email)
 
-  /** True while the app is checking whether the person is still signed in from last time. */
   private val _restoring = MutableStateFlow(true)
   val restoring: StateFlow<Boolean> = _restoring.asStateFlow()
 
   init {
     repository.onCloudMessage = { text -> showMessage(text) }
-    // Stay signed in: bring back the saved sign-in before showing any sign-in screen.
     viewModelScope.launch {
       try { repository.auth.restoreSession() } finally { _restoring.value = false }
     }
     refreshDirectory()
-    // Whenever someone signs in (or their role changes), load what their role manages from the server.
     viewModelScope.launch {
       repository.currentUser.map { Triple(it.id, it.role, it.status) }.distinctUntilChanged().collect { refreshAdminData() }
     }
@@ -185,7 +160,6 @@ class CampusViewModel(
   suspend fun resetPasswordSuspend(email: String, code: String, newPassword: String): AuthOutcome =
     repository.auth.liveResetPassword(email, code, newPassword)
 
-  /** Changes my own password. Returns the reason in words when it failed, or null when it worked. */
   suspend fun changePassword(current: String, new: String): String? =
     when (val r = repository.auth.changePassword(current, new)) {
       is AuthOutcome.PasswordChanged -> {
@@ -197,13 +171,10 @@ class CampusViewModel(
       else -> authErrorText(AuthError.NETWORK)
     }
 
-  /** Re-reads my profile from the server (approval status, role). */
   suspend fun refreshProfile(): Boolean = repository.auth.liveRefreshProfile()
 
-  /** The administrator's second step (authenticator app). */
   suspend fun verifyMfa(code: String): AuthOutcome = repository.auth.liveVerifyMfa(code)
 
-  /** Loads the campuses and programmes people can choose at sign-up. */
   fun refreshDirectory() {
     viewModelScope.launch { repository.auth.loadDirectory() }
   }
@@ -229,7 +200,6 @@ class CampusViewModel(
     _currentTab.value = ScreenTab.HOME
     _selectedDay.value = todayDay()
     _isWeekView.value = false
-    _announcementFilter.value = "ALL"
     _submissionFilterCourse.value = "ALL"
     _message.value = null
   }
@@ -248,8 +218,8 @@ class CampusViewModel(
       "Namba ya usajili au ya mfanyakazi haiko katika muundo sahihi."
     )
     AuthError.NUMBER_TAKEN -> t(
-      "That number is already linked to an account.",
-      "Namba hiyo tayari imeunganishwa na akaunti."
+      "That number or email cannot be used. It may already be linked to an account.",
+      "Namba au barua pepe hiyo haiwezi kutumika. Huenda tayari imeunganishwa na akaunti."
     )
     AuthError.PROGRAMME_REQUIRED -> t("Please choose your programme.", "Tafadhali chagua programu yako.")
     AuthError.PASSWORD_WEAK -> t(
@@ -288,9 +258,6 @@ class CampusViewModel(
     PasswordProblem.REPEATED -> t("Too repetitive", "Inarudiarudia mno")
   }
 
-  // ---------- Navigation ----------
-
-  /** Today as Monday = 1 ... Saturday = 6. Sunday shows Monday, the next teaching day. */
   fun todayDay(): Int = when (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)) {
     java.util.Calendar.SUNDAY -> 1
     else -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1
@@ -300,10 +267,8 @@ class CampusViewModel(
 
   fun canEditSession(session: ClassSession): Boolean = repository.canEditSession(session)
 
-  /** True while the phone is reading or saving with the server. */
   val syncing: StateFlow<Boolean> = repository.syncing
 
-  /** Students a lecturer or administrator can make class representatives. */
   val classMembers: StateFlow<List<ClassMember>> = repository.classMembers
 
   fun setClassRep(studentId: String, on: Boolean) {
@@ -325,10 +290,6 @@ class CampusViewModel(
 
   fun toggleWeekView() {
     _isWeekView.value = !_isWeekView.value
-  }
-
-  fun setAnnouncementFilter(filter: String) {
-    _announcementFilter.value = filter
   }
 
   fun setSubmissionFilterCourse(course: String) {
@@ -368,8 +329,6 @@ class CampusViewModel(
     repository.markAllNotificationsRead()
   }
 
-  // ---------- Student work ----------
-
   fun submitStudentWork(
     deadlineId: String,
     courseCode: String,
@@ -388,15 +347,12 @@ class CampusViewModel(
     repository.deleteStudentSubmission(submissionId)
   }
 
-  // ---------- Announcements ----------
-
   fun audienceOptions(): List<AudienceOption> = repository.audienceOptions()
 
   fun urgentLeftToday(): Int = repository.urgentLeftToday()
 
   fun canUseUrgentFor(type: AudienceType): Boolean = repository.canUseUrgentFor(type)
 
-  /** Returns true when the notice went out. A refusal is explained in a message. */
   fun publishAnnouncement(
     title: String,
     body: String,
@@ -467,8 +423,6 @@ class CampusViewModel(
     repository.setAnnouncementApproval(id, status)
   }
 
-  // ---------- Study materials ----------
-
   fun uploadMaterial(title: String, courseCode: String, courseTitle: String, description: String, attachment: AttachmentFile): Boolean {
     val ok = repository.uploadMaterial(title, courseCode, courseTitle, description, attachment)
     if (!ok) showMessage(t("You can only share files for courses you teach.", "Unaweza kushiriki mafaili ya kozi unazofundisha tu."))
@@ -486,8 +440,6 @@ class CampusViewModel(
   fun setMaterialApproval(id: String, status: ContentApprovalStatus) {
     repository.setMaterialApproval(id, status)
   }
-
-  // ---------- Timetable ----------
 
   fun updateSessionVenue(sessionId: String, newVenue: String, reason: String) {
     repository.updateSessionVenue(sessionId, newVenue, reason)
@@ -508,8 +460,6 @@ class CampusViewModel(
   fun setSessionApproval(sessionId: String, status: ContentApprovalStatus) {
     repository.setSessionApproval(sessionId, status)
   }
-
-  // ---------- Deadlines ----------
 
   fun addDeadline(courseCode: String, courseTitle: String, title: String, instructions: String, dueDateTime: String, acceptedFormats: String, attachment: AttachmentFile? = null): Boolean {
     val ok = repository.addDeadline(courseCode, courseTitle, title, instructions, dueDateTime, acceptedFormats, attachment)
@@ -538,8 +488,6 @@ class CampusViewModel(
     repository.setDeadlineApproval(id, status)
   }
 
-  // ---------- E-learning: timed quizzes ----------
-
   val quizzes = repository.quizzes
   val quizAttempts = repository.attempts
 
@@ -564,7 +512,6 @@ class CampusViewModel(
     QuizError.TIME_UP -> t("Time is up. Your answers were submitted.", "Muda umeisha. Majibu yako yamewasilishwa.")
   }
 
-  /** Returns the reason in words when the quiz could not be created, or null when it was. */
   fun createQuiz(
     courseCode: String, title: String, instructions: String, durationMinutes: Int,
     opensAt: Long, closesAt: Long, questions: List<QuizQuestion>
@@ -608,8 +555,6 @@ class CampusViewModel(
 
   fun finalizeExpiredQuizzes() = repository.finalizeExpiredAttempts()
 
-  // ---------- Campus setup (campus administrator) ----------
-
   fun addProgramme(name: String): Boolean {
     val ok = repository.addProgramme(name)
     showMessage(if (ok) t("Programme added.", "Programu imeongezwa.") else t("That programme already exists or the name is too short.", "Programu hiyo ipo tayari au jina ni fupi mno."))
@@ -622,7 +567,6 @@ class CampusViewModel(
     return ok
   }
 
-  /** Saves which courses belong to a programme. True when it was accepted. */
   fun setProgrammeCourses(programme: String, codes: Set<String>): Boolean {
     val ok = repository.setProgrammeCourses(programme, codes)
     showMessage(
@@ -647,13 +591,10 @@ class CampusViewModel(
     return ok
   }
 
-  // ---------- Scheduling ----------
-
   fun schedulableCourses(): List<Pair<String, String>> = repository.schedulableCourses()
   fun lecturersFor(courseCode: String): List<UserProfile> = repository.lecturersFor(courseCode)
   fun campusLecturers(): List<UserProfile> = repository.campusLecturers()
 
-  /** Saves who teaches the course. Returns the reason in words when it could not be saved, or null when it was. */
   fun setCourseLecturers(courseCode: String, lecturerIds: Set<String>): String? {
     val result = repository.setCourseLecturers(courseCode, lecturerIds)
     val reason = when (result.error) {
@@ -672,7 +613,6 @@ class CampusViewModel(
   fun roomsWithAvailability(day: Int, start: String, end: String): List<RoomOption> =
     repository.roomsWithAvailability(day, start, end)
 
-  /** Saves the class. Returns the reason in words when it could not be saved, or null when it was. */
   fun tryAddSession(courseCode: String, lecturerId: String, day: Int, start: String, end: String, venue: String): String? {
     val error = repository.addSession(courseCode, lecturerId, day, start, end, venue)
     if (error == null) {
@@ -690,9 +630,6 @@ class CampusViewModel(
     }
   }
 
-  // ---------- App manager ----------
-
-  /** Creates the campus and its first administrator. Returns the reason in words when it failed, or null. */
   suspend fun createCampus(
     code: String, name: String, adminName: String, adminEmail: String, adminNumber: String, adminPassword: String,
     location: String = "", contactEmail: String = "", contactPhone: String = ""
@@ -720,7 +657,6 @@ class CampusViewModel(
     }
   }
 
-  /** Offline (maintenance) mode of the person's own campus: when true the whole campus is paused. */
   val campusPaused = repository.campusPaused
   val myCampus = repository.myCampus
 
@@ -737,7 +673,6 @@ class CampusViewModel(
     }
   }
 
-  /** Returns an error message, or null when the details were saved. */
   suspend fun updateCampusDetails(universityId: String, name: String?, location: String, email: String, phone: String): String? {
     val ok = repository.updateCampusDetails(universityId, name, location, email, phone)
     return if (ok) {
@@ -746,7 +681,6 @@ class CampusViewModel(
     } else t("Could not save the details.", "Imeshindikana kuhifadhi taarifa.")
   }
 
-  /** Returns an error message, or null when the person was added. */
   suspend fun addCampusUser(universityId: String, role: Role, name: String, email: String, number: String, programme: String?, password: String): String? {
     val result = repository.addCampusUser(universityId, role, name, email, number, programme, password)
     if (result.ok) {
@@ -763,10 +697,6 @@ class CampusViewModel(
     }
   }
 
-  // ---------- Registry ----------
-
-  /** True/false against the university list, or null when that university has not uploaded one. */
-
   fun approveUser(userId: String, role: Role, programme: String?, teaches: Set<String>) {
     viewModelScope.launch {
       val ok = repository.approveUser(userId, role, programme, teaches)
@@ -781,7 +711,6 @@ class CampusViewModel(
     }
   }
 
-  /** Reloads the people waiting for approval (administrators) or the campus totals (app manager). */
   fun refreshAdminData() {
     viewModelScope.launch {
       val u = repository.currentUser.value
@@ -791,8 +720,6 @@ class CampusViewModel(
     }
   }
 
-  // ---------- My data ----------
-
   fun exportMyData(): String = repository.exportMyData()
 
   fun requestDataDeletion() {
@@ -800,15 +727,12 @@ class CampusViewModel(
     showMessage(t("Request sent to the Academic Registry.", "Ombi limetumwa kwa Msajili wa Taaluma."))
   }
 
-  // ---------- People management (administrators) and AI settings (app manager) ----------
-
   private val people_ = repository.peopleAdmin
   val managedPeople = people_.people
   val managedProgrammes = people_.programmes
   val managedAdmins = people_.admins
   val aiStatus = people_.ai
 
-  /** Reloads the campus people and programmes (campus administrator). */
   fun refreshPeople() {
     viewModelScope.launch {
       val me = repository.currentUser.value
@@ -818,7 +742,6 @@ class CampusViewModel(
     }
   }
 
-  /** Reloads the administrators of every campus (app manager). */
   fun refreshPlatformAdmins() {
     viewModelScope.launch { people_.loadAdmins() }
   }
@@ -843,7 +766,6 @@ class CampusViewModel(
     else -> t("The server could not finish this. Try again.", "Seva imeshindwa kukamilisha. Jaribu tena.")
   }
 
-  /** Runs one action. Returns the reason in words when it failed, or null when it worked. */
   private suspend fun act(okText: String, call: suspend () -> com.willykez.campconnect.data.repository.PeopleResult): String? {
     val r = call()
     return if (r.ok) { showMessage(okText); null } else peopleErrorText(r.code)
@@ -866,6 +788,9 @@ class CampusViewModel(
       people_.setPaused(id, pause)
     }
 
+  suspend fun erasePerson(id: String): String? =
+    act(t("Personal data erased.", "Taarifa binafsi zimefutwa.")) { people_.erase(id) }
+
   suspend fun deletePerson(id: String): String? =
     act(t("Account deleted.", "Akaunti imefutwa.")) { people_.delete(id) }
 
@@ -874,7 +799,6 @@ class CampusViewModel(
       people_.setClassRep(id, on)
     }
 
-  /** Returns an error in words, or null when sent. */
   suspend fun sendToCampusAdmins(universityId: String, title: String, message: String, urgent: Boolean): String? {
     val uuid = repository.auth.universityUuid(universityId) ?: return peopleErrorText("failed")
     val (n, code) = people_.messageCampusAdmins(uuid, title, message, urgent)
@@ -895,8 +819,6 @@ class CampusViewModel(
 
   suspend fun removeAiKey(): String? =
     act(t("AI key removed.", "Ufunguo wa AI umeondolewa.")) { people_.clearAiKey() }
-
-  // ---------- Words used in several places ----------
 
   fun getString(key: String): String {
     val sw = isSwahili

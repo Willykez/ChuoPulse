@@ -10,7 +10,6 @@ import com.willykez.campconnect.data.docs.DocumentKind
 
 import com.willykez.campconnect.util.DeadlineTime
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Attachment
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -42,11 +40,9 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,13 +51,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.willykez.campconnect.data.model.Announcement
 import com.willykez.campconnect.data.model.AnnouncementPriority
 import com.willykez.campconnect.data.model.AudienceType
@@ -110,7 +104,6 @@ fun OfflineBanner(
   modifier: Modifier = Modifier
 ) {
   if (!isOffline) {
-    // Online and fresh: a single quiet line instead of a card.
     Text(
       text = statusText,
       style = MaterialTheme.typography.labelSmall,
@@ -179,7 +172,6 @@ fun SessionCard(
 ) {
   val isChanged = session.status == SessionStatus.CHANGED
   val isCancelled = session.status == SessionStatus.CANCELLED
-  // One colour tells the story of the class: blue = on, amber = moved, red = cancelled.
   val accent = when (session.status) {
     SessionStatus.CHANGED -> WarmAmber
     SessionStatus.CANCELLED -> DangerRed
@@ -197,7 +189,6 @@ fun SessionCard(
       .testTag("session_card_${session.id}")
   ) {
     Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-      // Time rail
       Column(
         modifier = Modifier
           .width(86.dp)
@@ -253,7 +244,6 @@ fun SessionCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Venue and lecturer as two tidy chips
         Row(verticalAlignment = Alignment.CenterVertically) {
           Icon(Icons.Default.LocationOn, contentDescription = "Venue", modifier = Modifier.size(16.dp), tint = if (isChanged) WarmAmber else DeepBlue)
           Spacer(modifier = Modifier.width(6.dp))
@@ -271,7 +261,6 @@ fun SessionCard(
           Text(text = session.lecturerName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // Change or cancellation note
         if (!session.changeReason.isNullOrBlank()) {
           Spacer(modifier = Modifier.height(10.dp))
           Box(
@@ -289,7 +278,6 @@ fun SessionCard(
           }
         }
 
-        // Controls for Admin or Assigned Lecturer: full-size buttons on their own row
         if (currentUserRole == Role.ADMIN || canModerate) {
           Spacer(modifier = Modifier.height(12.dp))
           Row(
@@ -348,7 +336,6 @@ fun AnnouncementCard(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-          // Audience badge
           val audienceBg = when (announcement.audienceType) {
             AudienceType.CAMPUS -> DeepBlue.copy(alpha = 0.15f)
             AudienceType.PROGRAMME -> WarmAmber.copy(alpha = 0.15f)
@@ -378,7 +365,7 @@ fun AnnouncementCard(
               backgroundColor = DeepBlue.copy(alpha = 0.12f),
               contentColor = DeepBlue
             )
-            AnnouncementPriority.NORMAL -> Unit // ordinary notices carry no badge: only Urgent and Academic stand out
+            AnnouncementPriority.NORMAL -> Unit
           }
 
           if (announcement.isRetracted) {
@@ -400,7 +387,6 @@ fun AnnouncementCard(
           }
         }
 
-        // Unread badge or read count
         if (!announcement.isRead) {
           Box(
             modifier = Modifier
@@ -409,7 +395,6 @@ fun AnnouncementCard(
               .background(DeepBlue)
           )
         } else if (showReadCount) {
-          // Counts are for the sender and the registry. A student never sees who read what.
           Text(
             text = "${announcement.readCount} read",
             style = MaterialTheme.typography.labelSmall,
@@ -438,7 +423,6 @@ fun AnnouncementCard(
         overflow = TextOverflow.Ellipsis
       )
 
-      // Attachment preview
       if (announcement.attachment != null) {
         Spacer(modifier = Modifier.height(8.dp))
         Row(
@@ -503,11 +487,9 @@ fun DeadlineCard(
   modifier: Modifier = Modifier
 ) {
   val isCompleted = deadline.isCompleted
-  // How long is left is worked out from the due date, so it never goes stale.
   val urgency = DeadlineTime.urgency(deadline.dueDateTime, deadline.urgencyText, swahili)
   val overdue = !isCompleted && DeadlineTime.isOverdue(deadline.dueDateTime)
 
-  // Ticking fades the colours instead of snapping them.
   val tickFill by animateColorAsState(
     if (isCompleted) SuccessGreen else MaterialTheme.colorScheme.surfaceVariant, tween(220), label = "tick_fill"
   )
@@ -541,7 +523,6 @@ fun DeadlineCard(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
       ) {
-        // Checkbox
         Box(
           modifier = Modifier
             .size(26.dp)
@@ -649,7 +630,6 @@ fun DeadlineCard(
 
           Spacer(modifier = Modifier.height(6.dp))
 
-          // Lecturer Preferences format note
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
               text = "Preferences: ${deadline.acceptedFormats}",
@@ -682,7 +662,6 @@ fun DeadlineCard(
               )
             }
 
-            // Submit Coursework button
             if (onSubmitClick != null) {
               Surface(
                 shape = RoundedCornerShape(8.dp),
@@ -709,7 +688,6 @@ fun DeadlineCard(
         }
       }
 
-      // A student can look back at what they handed in.
       if (onViewMySubmission != null) {
         Spacer(modifier = Modifier.height(8.dp))
         Surface(
@@ -737,7 +715,6 @@ fun DeadlineCard(
         }
       }
 
-      // Moderation controls for Admin/Lecturer
       if (canModerate) {
         Spacer(modifier = Modifier.height(10.dp))
         Row(

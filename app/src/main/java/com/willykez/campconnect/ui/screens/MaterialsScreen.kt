@@ -37,7 +37,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.data.model.AttachmentFile
 import com.willykez.campconnect.data.model.ContentApprovalStatus
 import com.willykez.campconnect.data.model.Role
-import com.willykez.campconnect.data.model.StudyMaterial
 import com.willykez.campconnect.ui.components.StatusBadge
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DangerRedLight
@@ -90,7 +88,6 @@ fun MaterialsScreen(
     query.isBlank() || it.title.contains(query, true) || it.courseCode.contains(query, true) ||
       it.courseTitle.contains(query, true) || it.description.contains(query, true)
   }
-  // One section per subject, so everything for a module is in one place.
   val grouped = shown.groupBy { it.courseCode }.toSortedMap()
 
   Box(modifier = modifier.fillMaxSize()) {
@@ -101,7 +98,6 @@ fun MaterialsScreen(
     ) {
       Spacer(modifier = Modifier.height(8.dp))
 
-      // Header
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -153,7 +149,6 @@ fun MaterialsScreen(
         )
       }
 
-      // Materials List
       LazyColumn(
         modifier = Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -268,7 +263,6 @@ fun MaterialsScreen(
 
               Spacer(modifier = Modifier.height(10.dp))
 
-              // Actions: Read in the built-in viewer, save for offline, and moderation
               Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -312,7 +306,7 @@ fun MaterialsScreen(
               }
             }
           }
-        
+
           }
         }
           }
@@ -343,7 +337,6 @@ fun MaterialsScreen(
     }
   }
 }
-
 
 @Composable
 private fun SubjectHeader(

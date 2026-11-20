@@ -21,11 +21,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.ui.theme.DeepBlue
 import kotlinx.coroutines.launch
 
-/** One choice in a [PickerSheet]. A disabled choice stays visible with a [note] saying why (for example "In use: CS215"). */
 data class PickerItem(
   val id: String,
   val title: String,
@@ -52,10 +49,6 @@ data class PickerItem(
   val note: String? = null
 )
 
-/**
- * The one way the app asks "choose one of these": a bottom sheet with a short list, a search box for
- * long lists, and a smooth close once something is picked.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PickerSheet(
@@ -149,7 +142,6 @@ private fun PickerRow(item: PickerItem, selected: Boolean, onClick: () -> Unit) 
   }
 }
 
-/** A field that looks like a text box but opens a [PickerSheet] when tapped. */
 @Composable
 fun PickerField(
   label: String,

@@ -90,12 +90,6 @@ import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.util.DeadlineTime
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/**
- * Full-screen quiz editor in the style of a form builder.
- *
- * Two tabs: Questions (the form itself) and Settings (course, time allowed, when it opens and closes).
- * Question cards expand when tapped. Students see the finished quiz as one scrolling form.
- */
 @Composable
 fun QuizEditorScreen(viewModel: CampusViewModel, onDismiss: () -> Unit) {
   val t = { en: String, sw: String -> viewModel.t(en, sw) }
@@ -136,7 +130,6 @@ fun QuizEditorScreen(viewModel: CampusViewModel, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
     Surface(modifier = Modifier.fillMaxSize().testTag("quiz_editor_screen"), color = DeepBlue.copy(alpha = 0.05f).compositeOver(MaterialTheme.colorScheme.background)) {
       Column(Modifier.fillMaxSize()) {
-        // Top bar
         Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
           Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -292,7 +285,6 @@ private fun Color.compositeOver(background: Color): Color {
   )
 }
 
-/** A question card. Tap to expand and edit; collapsed it shows a one-line summary. */
 @Composable
 private fun QuestionCard(
   number: Int,
@@ -321,7 +313,6 @@ private fun QuestionCard(
     Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
       Box(Modifier.width(6.dp).fillMaxHeight().background(if (expanded) DeepBlue else Color.Transparent))
       Column(Modifier.weight(1f)) {
-        // Summary row, always visible. Tapping it expands the card.
         Row(
           Modifier.fillMaxWidth().clickable { onExpand() }.padding(horizontal = 14.dp, vertical = 14.dp),
           verticalAlignment = Alignment.CenterVertically
@@ -344,7 +335,6 @@ private fun QuestionCard(
 
         if (expanded) {
           Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
-            // Type dropdown
             var menuOpen by remember { mutableStateOf(false) }
             Box {
               Surface(
@@ -459,7 +449,6 @@ private fun QuestionCard(
             Spacer(Modifier.height(12.dp))
             androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             Spacer(Modifier.height(10.dp))
-            // Toolbar: duplicate, move, delete
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
               SoftIconButton(Icons.Default.ContentCopy, t("Duplicate", "Nakili"), onDuplicate, tag = "question_${number}_duplicate")
               SoftIconButton(Icons.Default.ArrowUpward, t("Move up", "Sogeza juu"), { if (!isFirst) onMoveUp() }, tag = "question_${number}_up")

@@ -1396,6 +1396,7 @@ begin
 end $$;
 
 -- Totals per campus, never content.
+drop function if exists public.platform_campus_summary();   -- re-runnable: a later migration changes its columns
 create or replace function public.platform_campus_summary()
 returns table (university_id uuid, code text, name text, people bigint, pending bigint, admins bigint,
                courses bigint, sessions bigint, announcements bigint, materials bigint)
@@ -1513,6 +1514,8 @@ end $$;
 -- ---------- 13. Safe views -----------------------------------------------------------
 
 -- Everyone active may see the names of lecturers and administrators, and nothing more.
+drop view if exists public.staff_directory;   -- re-runnable: a later migration adds columns to both views
+drop view if exists public.class_list;
 create or replace view public.staff_directory as
   select id, full_name, role from public.profiles
   where status = 'approved' and role in ('lecturer', 'admin') and public.is_active()

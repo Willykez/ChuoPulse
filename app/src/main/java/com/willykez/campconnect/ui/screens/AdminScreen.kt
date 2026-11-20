@@ -20,9 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -31,14 +28,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.willykez.campconnect.data.model.Role
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -57,12 +50,8 @@ import com.willykez.campconnect.data.model.UserProfile
 import com.willykez.campconnect.ui.components.StatusBadge
 import com.willykez.campconnect.ui.components.ConfirmSheet
 import com.willykez.campconnect.ui.theme.DangerRed
-import com.willykez.campconnect.ui.theme.DangerRedLight
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.SuccessGreen
-import com.willykez.campconnect.ui.theme.SuccessGreenLight
-import com.willykez.campconnect.ui.theme.WarmAmber
-import com.willykez.campconnect.ui.theme.WarmAmberLight
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
 @Composable
@@ -125,7 +114,6 @@ fun AdminScreen(
     Spacer(modifier = Modifier.height(14.dp))
 
     if (selectedTab == 0) {
-      // Pending Approvals
       if (pendingUsers.isEmpty()) {
         Box(
           modifier = Modifier
@@ -256,7 +244,7 @@ fun AdminScreen(
                 PendingActions(viewModel, pUser)
               }
             }
-          
+
           }
         }
 
@@ -293,7 +281,6 @@ fun AdminScreen(
         CampusSetupTab(viewModel = viewModel, modifier = Modifier.weight(1f))
       }
     } else {
-      // Audit Logs
       LazyColumn(
         modifier = Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -346,11 +333,6 @@ fun AdminScreen(
   }
 }
 
-
-/**
- * Registry decision for one waiting account. Nobody can make themselves a lecturer:
- * the administrator chooses the role, and risky choices ask for a second confirmation.
- */
 @Composable
 private fun PendingActions(viewModel: CampusViewModel, pUser: UserProfile) {
   val wantsStaff = pUser.requestedRole == Role.LECTURER

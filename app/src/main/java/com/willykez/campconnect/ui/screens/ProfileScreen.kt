@@ -102,7 +102,6 @@ fun ProfileScreen(
     item {
       val universities by viewModel.universities.collectAsState()
       val campusName = universities.firstOrNull { it.id == user.universityId }?.name.orEmpty()
-      // Hero: big avatar, name, and who/where this person is
       Box(
         modifier = Modifier
           .fillMaxWidth()

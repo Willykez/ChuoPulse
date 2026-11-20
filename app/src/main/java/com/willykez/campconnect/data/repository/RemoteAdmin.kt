@@ -17,7 +17,6 @@ data class RemoteResult(
   val body: String = ""
 )
 
-/** What `platform_campus_summary()` returns for one campus. */
 data class RemoteCampusSummary(
   val id: String, val code: String, val name: String,
   val people: Int, val pending: Int, val admins: Int, val courses: Int,
@@ -25,12 +24,6 @@ data class RemoteCampusSummary(
   val programmes: Int, val rooms: Int, val works: Int
 )
 
-/**
- * Everything the registry and the app manager do on the SERVER: create campuses and accounts, approve
- * or reject people, read campus totals. The database and the `admin-create-user` Edge Function decide
- * who may do each of these; this class only sends the request and turns the answer into a result.
- * [token] gives the signed-in person's access token; [refresh] gets a new one when it has expired.
- */
 class RemoteAdmin(
   private val token: () -> String?,
   private val refresh: suspend () -> String?
@@ -74,9 +67,6 @@ class RemoteAdmin(
   private fun result(r: SupabaseClient.Result?): RemoteResult =
     if (r != null && r.isSuccessful) RemoteResult(true, body = r.body) else errorOf(r)
 
-  // ---------- Generic table access (row-level security on the server decides what is allowed) ----------
-
-  /** Reads rows. Null when the request failed. */
   suspend fun query(table: String, qs: String): JSONArray? {
     val r = authed { client.select(table, qs, it) } ?: return null
     if (!r.isSuccessful) return null
@@ -92,7 +82,6 @@ class RemoteAdmin(
 
   suspend fun rpcCall(function: String, args: JSONObject): RemoteResult = result(authed { client.rpc(function, args, it) })
 
-  /** Uploads a private file. Returns ok when stored. */
   suspend fun uploadFile(bucket: String, path: String, bytes: ByteArray, mime: String): RemoteResult =
     result(authed { client.upload(bucket, path, bytes, mime, it) })
 
@@ -101,11 +90,9 @@ class RemoteAdmin(
     return try { client.download(bucket, path, t) ?: refresh()?.let { client.download(bucket, path, it) } } catch (e: Exception) { null }
   }
 
-  /** Calls any deployed Edge Function with the signed-in person's token (refreshing it once if needed). */
   suspend fun callFunction(name: String, payload: JSONObject): RemoteResult =
     result(authed { client.invokeFunction(name, payload, it) })
 
-  /** Creates a campus. The result's body is the new campus id (a JSON string). */
   suspend fun createUniversity(code: String, name: String): RemoteResult {
     val r = authed { client.rpc("platform_create_university", JSONObject().put("p_code", code).put("p_name", name), it) }
     val res = result(r)
@@ -115,11 +102,9 @@ class RemoteAdmin(
   suspend fun deleteUniversity(universityUuid: String): RemoteResult =
     result(authed { client.rpc("platform_delete_university", JSONObject().put("p_university", universityUuid), it) })
 
-  /** Removes a campus's data; the Edge Function also deletes the stored files. */
   suspend fun wipeCampus(universityUuid: String, scope: String): RemoteResult =
     result(authed { client.invokeFunction("campus-wipe-files", JSONObject().put("university_id", universityUuid).put("scope", scope), it) })
 
-  /** Creates a confirmed sign-in account with a password and its approved profile. */
   suspend fun provisionUser(
     universityCode: String, role: String, fullName: String, email: String,
     idNumber: String, programme: String?, password: String
@@ -131,7 +116,6 @@ class RemoteAdmin(
     return result(authed { client.invokeFunction("admin-create-user", payload, it) })
   }
 
-  /** Approves a waiting account (checked by the database: administrator of that campus only). */
   suspend fun approve(userId: String, role: String, programmeUuid: String?, courses: List<String>): RemoteResult {
     val args = JSONObject().put("p_user", userId).put("p_role", role)
       .put("p_programme", programmeUuid ?: JSONObject.NULL)
@@ -142,28 +126,17 @@ class RemoteAdmin(
   suspend fun reject(userId: String): RemoteResult =
     result(authed { client.rpc("reject_account", JSONObject().put("p_user", userId), it) })
 
-  suspend fun suspendAccount(userId: String, reason: String): RemoteResult =
-    result(authed { client.rpc("suspend_account", JSONObject().put("p_user", userId).put("p_reason", reason), it) })
-
   suspend fun setMaintenance(universityUuid: String, on: Boolean, note: String): RemoteResult =
     result(authed {
       client.rpc("platform_set_maintenance",
         JSONObject().put("p_university", universityUuid).put("p_on", on).put("p_note", note), it)
     })
 
-  /** The app manager may rename the campus; a campus administrator's name is ignored by the database. */
   suspend fun updateDetails(universityUuid: String, name: String?, location: String, email: String, phone: String): RemoteResult =
     result(authed {
       client.rpc("update_campus_details",
         JSONObject().put("p_university", universityUuid).put("p_name", name.orEmpty())
           .put("p_location", location).put("p_email", email).put("p_phone", phone), it)
-    })
-
-  /** Makes someone who already signed up (and verified their email) the administrator of a campus. */
-  suspend fun makeCampusAdmin(universityUuid: String, email: String, staffNumber: String): RemoteResult =
-    result(authed {
-      client.rpc("platform_make_campus_admin",
-        JSONObject().put("p_university", universityUuid).put("p_email", email).put("p_staff_number", staffNumber), it)
     })
 
   suspend fun campusSummaries(): List<RemoteCampusSummary>? {

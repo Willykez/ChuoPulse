@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,7 +32,6 @@ import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/** Edit a campus's details. [canRename] is true only for the app manager. */
 @Composable
 fun EditCampusDetailsSheet(viewModel: CampusViewModel, campus: University, canRename: Boolean, onDismiss: () -> Unit) {
   var name by remember { mutableStateOf(campus.name) }
@@ -83,7 +81,6 @@ fun EditCampusDetailsSheet(viewModel: CampusViewModel, campus: University, canRe
   }
 }
 
-/** Add an approved student, lecturer or administrator straight into a campus. */
 @Composable
 fun AddCampusUserSheet(
   viewModel: CampusViewModel, universityId: String, allowAdmin: Boolean,
@@ -184,7 +181,6 @@ fun AddCampusUserSheet(
   }
 }
 
-/** The app manager's offline-mode switch for one campus. */
 @Composable
 fun MaintenanceSheet(viewModel: CampusViewModel, campus: University, onDismiss: () -> Unit) {
   var on by remember { mutableStateOf(campus.underMaintenance) }

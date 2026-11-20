@@ -74,12 +74,7 @@ import com.willykez.campconnect.viewmodel.CampusViewModel
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Tab ids used by AdminScreen. */
 internal object AdminTabs { const val REQUESTS = 0; const val LOG = 1; const val CAMPUS = 2; const val PEOPLE = 3; const val OVERVIEW = 4; const val MESSAGES = 5 }
-
-// ======================================================================================
-// The campus administrator's home: what needs attention, the numbers, and every action in one place.
-// ======================================================================================
 
 @Composable
 fun AdminOverviewTab(viewModel: CampusViewModel, onGo: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -200,10 +195,6 @@ private fun Banner(color: androidx.compose.ui.graphics.Color, text: String) {
   )
 }
 
-// ======================================================================================
-// Messages: a notification to a group of people on the campus.
-// ======================================================================================
-
 @Composable
 fun AdminMessagesTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val programmes by viewModel.managedProgrammes.collectAsState()
@@ -265,10 +256,6 @@ fun AdminMessagesTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) 
     selectedId = programmeId, onSelect = { programmeId = it }, onDismiss = { picking = false }
   )
 }
-
-// ======================================================================================
-// Add many people at once.
-// ======================================================================================
 
 private data class BulkRow(val name: String, val email: String, val number: String, val password: String, var error: String? = null, var done: Boolean = false)
 
@@ -357,10 +344,6 @@ fun BulkAddSheet(viewModel: CampusViewModel, universityId: String, role: Role, o
     selectedId = programmeName, onSelect = { programmeName = it }, onDismiss = { picking = false }
   )
 }
-
-// ======================================================================================
-// Export
-// ======================================================================================
 
 internal fun exportPeopleCsv(context: Context, campusCode: String, people: List<ManagedPerson>) {
   fun q(v: String) = "\"" + v.replace("\"", "\"\"") + "\""

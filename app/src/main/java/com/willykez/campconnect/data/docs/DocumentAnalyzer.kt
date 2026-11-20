@@ -2,7 +2,6 @@ package com.willykez.campconnect.data.docs
 
 import kotlin.math.ceil
 
-/** What the analysis produces for one document. */
 data class DocumentAnalysis(
   val summary: String,
   val keyTopics: List<String>,
@@ -13,14 +12,6 @@ data class DocumentAnalysis(
   val isSwahili: Boolean
 )
 
-/**
- * Turns the text of a document into a summary, key topics, learning objectives and study tips.
- *
- * This is an on-device *extractive* analysis: it picks the most informative sentences and the most
- * important terms from the document itself. It never invents facts, works offline and keeps the
- * document on the phone. It does not paraphrase or answer questions the way a language model would.
- * Works for English and Swahili.
- */
 object DocumentAnalyzer {
 
   fun analyse(text: String): DocumentAnalysis {
@@ -45,8 +36,6 @@ object DocumentAnalyzer {
     )
   }
 
-  // ---------- Summary ----------
-
   private fun summarise(text: String, freq: Map<String, Int>): String {
     val sentences = text.split(Regex("""(?<=[.!?])\s+|\n+"""))
       .map { it.trim().trimStart('•', '-', '*', '–', ' ') }
@@ -54,7 +43,6 @@ object DocumentAnalyzer {
       .distinct()
 
     if (sentences.size < 2) {
-      // Slides and notes are mostly short lines, so use the first meaningful ones.
       val lines = text.lines().map { it.trim().trimStart('•', '-', '*', '–', ' ') }.filter { it.length >= 8 }.distinct()
       return lines.take(5).joinToString(". ").take(MAX_SUMMARY).ifBlank { text.take(MAX_SUMMARY) }
     }
@@ -72,8 +60,6 @@ object DocumentAnalyzer {
     return out
   }
 
-  // ---------- Topics ----------
-
   private fun topics(tokens: List<String>, freq: Map<String, Int>): List<String> {
     val bigrams = HashMap<String, Int>()
     for (i in 0 until tokens.size - 1) {
@@ -89,8 +75,6 @@ object DocumentAnalyzer {
     val picked = (phrases + words).take(MAX_TOPICS)
     return picked.map { p -> p.split(' ').joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } } }
   }
-
-  // ---------- Objectives and tips ----------
 
   private fun objectives(text: String, topics: List<String>, swahili: Boolean): List<String> {
     val lines = text.lines().map { it.trim() }

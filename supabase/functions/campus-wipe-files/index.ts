@@ -1,3 +1,8 @@
+// After the app manager wipes a campus, remove its files from Storage.
+//
+// The database deletes the rows and, in the SAME transaction, queues every file path
+// (public.storage_cleanup_queue). So even if this function is interrupted, nothing is forgotten:
+// the storage-cleanup function (or a retry of this one) finishes the job.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -8,6 +13,7 @@ const cors = {
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), {
   status, headers: { ...cors, 'Content-Type': 'application/json' },
 })
+const CHUNK = 200
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -36,8 +42,7 @@ Deno.serve(async (req) => {
   const scopes = new Set(['announcements', 'timetable', 'materials', 'works', 'notifications', 'catalog', 'people', 'everything'])
   if (!uuid.test(campusId) || !scopes.has(scope)) return json(400, { error: 'invalid_campus_or_scope' })
 
-  // Run the database's authorization-checked transaction with the caller's JWT (not service role).
-  // It returns only the storage paths belonging to the selected campus and scope.
+  // The database's authorization-checked transaction, run with the caller's JWT (not service role).
   const { data: wipeResult, error: wipeError } = await userClient.rpc('platform_wipe_campus', {
     p_university: campusId,
     p_scope: scope,
@@ -53,19 +58,26 @@ Deno.serve(async (req) => {
   let removed = 0
   const failures: Array<{ bucket: string; count: number; message: string }> = []
   for (const bucket of buckets) {
-    const paths = Array.isArray(objects[bucket])
-      ? [...new Set(objects[bucket].filter((p: unknown): p is string => typeof p === 'string' && p.length > 0))]
+    const paths: string[] = Array.isArray(objects[bucket])
+      ? [...new Set<string>(objects[bucket].filter((p: unknown): p is string => typeof p === 'string' && p.length > 0))]
       : []
-    if (!paths.length) continue
-    const { data, error } = await serviceClient.storage.from(bucket).remove(paths)
-    if (error) failures.push({ bucket, count: paths.length, message: error.message })
-    else removed += data?.length ?? paths.length
+    for (let n = 0; n < paths.length; n += CHUNK) {
+      const part = paths.slice(n, n + CHUNK)
+      const { error } = await serviceClient.storage.from(bucket).remove(part)
+      if (error) {
+        failures.push({ bucket, count: part.length, message: error.message })   // stays queued: retried later
+      } else {
+        removed += part.length
+        await serviceClient.rpc('storage_cleanup_done_paths', { p_bucket: bucket, p_paths: part })
+      }
+    }
   }
-  // Database deletion is already committed. Report storage failures explicitly so an admin can retry.
+  // The database deletion is committed. Anything that failed is still in the queue and will be retried.
   return json(failures.length ? 207 : 200, {
     ok: failures.length === 0,
     removed_files: removed,
     failed_files: failures.reduce((sum, f) => sum + f.count, 0),
     failures,
+    retry: failures.length ? 'queued: the storage-cleanup function will remove them' : undefined,
   })
 })

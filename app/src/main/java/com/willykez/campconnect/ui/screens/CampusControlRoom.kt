@@ -78,7 +78,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.data.repository.CampusSummary
 import com.willykez.campconnect.data.repository.WipeScope
 import com.willykez.campconnect.ui.components.ConfirmSheet
@@ -97,10 +96,6 @@ private data class WipeItem(
   val icon: ImageVector, val title: String, val hint: String, val count: Int?, val scope: WipeScope?
 )
 
-/**
- * The app manager's full-screen room for ONE campus: status, details, administrators, messages,
- * cleaning up content, and the danger zone. It shows totals only, never what people wrote.
- */
 @Composable
 fun CampusControlRoom(campus: CampusSummary, viewModel: CampusViewModel, onDismiss: () -> Unit) {
   val uni = campus.university
@@ -109,11 +104,10 @@ fun CampusControlRoom(campus: CampusSummary, viewModel: CampusViewModel, onDismi
   val snackbar = remember { SnackbarHostState() }
   val message by viewModel.message.collectAsState()
   var tab by remember { mutableStateOf(RoomTab.OVERVIEW) }
-  var sheet by remember { mutableStateOf(0) } // 1 offline, 2 edit, 3 add person
+  var sheet by remember { mutableStateOf(0) }
   var confirm by remember { mutableStateOf<WipeItem?>(null) }
   var typed by remember { mutableStateOf("") }
 
-  // While this room is open it shows the messages itself (the screen behind it is covered).
   LaunchedEffect(message) {
     message?.let { snackbar.showSnackbar(it); viewModel.messageShown() }
   }
@@ -126,7 +120,6 @@ fun CampusControlRoom(campus: CampusSummary, viewModel: CampusViewModel, onDismi
     Surface(modifier = Modifier.fillMaxSize().testTag("campus_control_room"), color = MaterialTheme.colorScheme.background) {
       Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-          // ---- Header: the colour runs behind the status bar, nothing is cut off ----
           Column(
             modifier = Modifier
               .fillMaxWidth()
@@ -275,13 +268,10 @@ private fun Card2(modifier: Modifier = Modifier, border: Color = MaterialTheme.c
   ) { content() }
 }
 
-// ---------------------------------- Overview ----------------------------------
-
 @Composable
 private fun OverviewPanel(campus: CampusSummary, viewModel: CampusViewModel, onOffline: () -> Unit, onEdit: () -> Unit, onAdd: () -> Unit, onAdmins: () -> Unit) {
   val uni = campus.university
   Panel {
-    // Status
     val tint = if (uni.underMaintenance) WarmAmber else SuccessGreen
     Card2(border = tint.copy(alpha = 0.5f)) {
       Column {
@@ -401,8 +391,6 @@ internal fun ActionTile(icon: ImageVector, title: String, hint: String, tag: Str
   }
 }
 
-// ---------------------------------- Administrators ----------------------------------
-
 @Composable
 private fun AdminsPanel(campus: CampusSummary, viewModel: CampusViewModel, onAdd: () -> Unit) {
   val admins by viewModel.managedAdmins.collectAsState()
@@ -451,8 +439,6 @@ private fun AdminsPanel(campus: CampusSummary, viewModel: CampusViewModel, onAdd
   }
 }
 
-// ---------------------------------- Message ----------------------------------
-
 @Composable
 private fun MessagePanel(campus: CampusSummary, viewModel: CampusViewModel) {
   val scope = rememberCoroutineScope()
@@ -486,8 +472,6 @@ private fun MessagePanel(campus: CampusSummary, viewModel: CampusViewModel) {
     ) { Icon(Icons.Default.Send, null); Spacer(Modifier.width(8.dp)); Text(viewModel.t("Send", "Tuma"), fontWeight = FontWeight.SemiBold) }
   }
 }
-
-// ---------------------------------- Clean up / danger ----------------------------------
 
 @Composable
 private fun WipePanel(campus: CampusSummary, viewModel: CampusViewModel, danger: Boolean, onPick: (WipeItem) -> Unit) {

@@ -13,8 +13,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.PrimaryLightBlue
-import com.willykez.campconnect.ui.theme.SuccessGreen
-import com.willykez.campconnect.ui.theme.SuccessGreenLight
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -47,7 +45,6 @@ import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -105,11 +102,6 @@ import java.util.Date
 
 private val Categories = listOf("Notes", "Syllabus", "Assignments", "Exam Revision", "Reference")
 
-/**
- * The person's library of analysed documents. Anything analysed anywhere in the app lands here:
- * it appears at once as "Analysing", then shows its summary, topics, objectives and study tips.
- * Everything is stored on this phone.
- */
 @Composable
 fun ProcessedDocumentsScreen(
   viewModel: CampusViewModel,
@@ -147,7 +139,6 @@ fun ProcessedDocumentsScreen(
   }
   val addDocuments = { picker.launch(DocumentKind.pickerMimeTypes) }
 
-  // Filters come from what is actually in the library, never from a fixed list.
   val courseFilters = listOf("ALL") + documents.map { it.courseCode }.distinct().sorted()
   val categoryFilters = listOf("All Types") + documents.map { it.category }.distinct().sorted()
   val course = selectedCourse.takeIf { it in courseFilters } ?: "ALL"
@@ -165,7 +156,6 @@ fun ProcessedDocumentsScreen(
     val ai by viewModel.aiStatus.collectAsState()
     LaunchedEffect(Unit) { viewModel.refreshAiStatus() }
 
-    // Hero: what this is, where the work happens, and the one action that matters
     Box(
       Modifier
         .fillMaxWidth()
@@ -307,7 +297,6 @@ fun ProcessedDocumentsScreen(
     }
   }
 
-  // ---------- Choose the course for the files just picked ----------
   if (chosenFiles.isNotEmpty()) {
     val titles = catalog[user.universityId].orEmpty()
     val codes = when (user.role) {
@@ -394,7 +383,6 @@ fun ProcessedDocumentsScreen(
     }
   }
 
-  // ---------- Full analysis ----------
   documents.firstOrNull { it.id == detailId }?.let { doc ->
     val kind = DocumentKind.of(doc.fileName, doc.mimeType)
     AppBottomSheet(
@@ -474,7 +462,6 @@ fun ProcessedDocumentsScreen(
     }
   }
 
-  // ---------- Read (in-app viewer) ----------
   documents.firstOrNull { it.id == readingId }?.let { doc ->
     val kind = DocumentKind.of(doc.fileName, doc.mimeType)
     DocumentViewerDialog(

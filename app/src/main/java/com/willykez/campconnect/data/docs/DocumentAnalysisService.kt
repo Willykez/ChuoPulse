@@ -16,13 +16,6 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 
-/**
- * Takes a file the person chose, keeps a private copy on the phone, analyses it, and saves the result
- * into the local library so it shows up in "AI Summaries" straight away.
- *
- * Work runs in the app's own scope, so leaving the screen does not cancel it. The row appears in the
- * library immediately as PROCESSING and becomes COMPLETED, or FAILED with a reason and a Retry.
- */
 class DocumentAnalysisService private constructor(private val appContext: Context) {
 
   private val repository = ProcessedDocumentRepository(appContext)
@@ -30,7 +23,6 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private val libraryDir: File get() = File(appContext.filesDir, "library").also { it.mkdirs() }
 
-  /** What to analyse and where it belongs. [uri] may be a content:// or file:// address. */
   data class Request(
     val uri: Uri,
     val fileName: String,
@@ -43,11 +35,9 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
   )
 
   init {
-    // Anything still marked PROCESSING belongs to an earlier run of the app that was closed mid-way.
     scope.launch { dao.markInterrupted() }
   }
 
-  /** Reads the display name and size Android knows for a picked file. */
   fun describe(uri: Uri): Pair<String, String?> {
     var name = uri.lastPathSegment?.substringAfterLast('/') ?: "document"
     runCatching {
@@ -61,7 +51,6 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
     return name to mime
   }
 
-  /** Starts analysing and returns the id of the library entry that will hold the result. */
   fun enqueue(request: Request): String {
     val id = UUID.randomUUID().toString()
     scope.launch {
@@ -93,7 +82,6 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
     return id
   }
 
-  /** Runs the analysis again from the private copy kept on the phone. */
   fun retry(document: ProcessedDocumentEntity) {
     scope.launch {
       val file = fileOf(document)
@@ -113,7 +101,6 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
     }
   }
 
-  /** Removes the library entry and the private copy of the file. Nothing else is touched. */
   suspend fun delete(document: ProcessedDocumentEntity) {
     withContext(Dispatchers.IO) {
       fileOf(document)?.takeIf { it.exists() }?.delete()
@@ -121,18 +108,15 @@ class DocumentAnalysisService private constructor(private val appContext: Contex
     repository.deleteLocal(document.id)
   }
 
-  /** The private copy for an entry, or null when there is none (for example an old sample entry). */
   fun fileOf(document: ProcessedDocumentEntity): File? {
     val path = document.sourceUri?.takeIf { it.startsWith("file:") }?.let { Uri.parse(it).path } ?: return null
     val file = File(path)
-    // Only ever touch files inside our own library folder.
     return file.takeIf { it.canonicalPath.startsWith(libraryDir.canonicalPath + File.separator) }
   }
 
   private suspend fun analyse(entity: ProcessedDocumentEntity, file: File): ProcessedDocumentEntity {
     val extracted = DocumentTextExtractor.extract(file, entity.fileName, entity.mimeType)
     val result = DocumentAnalyzer.analyse(extracted.text)
-    // Real AI first; the on-device analysis is the fallback (offline, no key set, daily limit reached).
     val ai = (AiAnalysisClient.analyse(extracted.text, entity.fileName, entity.courseCode) as? AiAnalysisClient.Outcome.Success)?.result
     val partial = extracted.pageCount > extracted.pagesRead
     val baseTags = entity.tags.split(",").map { it.trim() }.filter { it.isNotBlank() && it != "ai" }

@@ -6,8 +6,6 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Visibility
 import com.willykez.campconnect.ui.components.ActionButton
 import com.willykez.campconnect.ui.components.SoftIconButton
-import androidx.compose.material.icons.filled.RadioButtonChecked
-import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Send
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,11 +28,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -54,7 +48,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,9 +91,6 @@ import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.ui.components.AppBottomSheet
 import com.willykez.campconnect.ui.components.ConfirmSheet
 import com.willykez.campconnect.ui.components.DueDateTimeField
-import com.willykez.campconnect.ui.components.PickerField
-import com.willykez.campconnect.ui.components.PickerItem
-import com.willykez.campconnect.ui.components.PickerSheet
 import com.willykez.campconnect.ui.components.SheetButtons
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
@@ -111,10 +101,6 @@ import com.willykez.campconnect.viewmodel.CampusViewModel
 import com.willykez.campconnect.viewmodel.ScreenTab
 import kotlinx.coroutines.delay
 
-// =====================================================================================
-// The list of quizzes
-// =====================================================================================
-
 @Composable
 fun QuizzesScreen(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val user by viewModel.currentUser.collectAsState()
@@ -123,7 +109,6 @@ fun QuizzesScreen(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val isStudent = user.role == Role.STUDENT
   val t = { en: String, sw: String -> viewModel.t(en, sw) }
 
-  // The clock moves on by itself so "opens in" and "closed" stay true, and timed-out attempts are handed in.
   var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
   LaunchedEffect(Unit) {
     while (true) {
@@ -334,10 +319,6 @@ private fun QuizCard(
   }
 }
 
-// =====================================================================================
-// Taking a quiz: the countdown, the questions, automatic hand-in
-// =====================================================================================
-
 private fun clock(ms: Long): String {
   val total = (ms.coerceAtLeast(0) + 999) / 1000
   val h = total / 3600
@@ -352,19 +333,16 @@ private fun TakeQuizDialog(viewModel: CampusViewModel, quiz: Quiz, attempt: Quiz
   val answers = remember(attempt.id) { mutableStateMapOf<String, String>().apply { putAll(attempt.answers) } }
   var index by remember(attempt.id) { mutableIntStateOf(0) }
   var remaining by remember(attempt.id) { mutableLongStateOf(attempt.deadlineAt - System.currentTimeMillis()) }
-  // null while writing; false once handed in by the student; true once the timer ended it.
   var timedOut by remember(attempt.id) { mutableStateOf<Boolean?>(null) }
   var confirmSubmit by remember { mutableStateOf(false) }
   var confirmLeave by remember { mutableStateOf(false) }
   val total = (attempt.deadlineAt - attempt.startedAt).coerceAtLeast(1)
 
-  // The countdown. It reads the wall clock, so leaving the app and coming back cannot buy extra time.
   LaunchedEffect(attempt.id, timedOut) {
     if (timedOut != null) return@LaunchedEffect
     while (true) {
       remaining = attempt.deadlineAt - System.currentTimeMillis()
       if (remaining <= 0) {
-        // Hand in what has been answered so far, including text typed in the last moments.
         viewModel.submitQuiz(attempt.id, answers.toMap(), timedOut = true)
         timedOut = true
         break
@@ -409,7 +387,6 @@ private fun TakeQuizDialog(viewModel: CampusViewModel, quiz: Quiz, attempt: Quiz
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp)
           )
 
-          // Google Forms style: the whole quiz is one scrolling form, one card per question.
           var focusedId by remember(attempt.id) { mutableStateOf<String?>(null) }
           var confirmClear by remember(attempt.id) { mutableStateOf(false) }
           val answeredCount = quiz.questions.count { !answers[it.id].isNullOrBlank() }
@@ -442,7 +419,6 @@ private fun TakeQuizDialog(viewModel: CampusViewModel, quiz: Quiz, attempt: Quiz
             Spacer(Modifier.height(4.dp))
           }
 
-          // Footer: progress, Clear form, Submit
           Surface(shadowElevation = 10.dp, color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.navigationBarsPadding()) {
               LinearProgressIndicator(
@@ -559,10 +535,6 @@ private fun FinishedPanel(viewModel: CampusViewModel, quiz: Quiz, attempt: QuizA
     Button(onClick = onClose, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(48.dp).testTag("quiz_finished_close_btn")) { Text(t("Done", "Imekamilika")) }
   }
 }
-
-// =====================================================================================
-// Results (student) and results + marking (lecturer)
-// =====================================================================================
 
 @Composable
 private fun QuizResultSheet(viewModel: CampusViewModel, quiz: Quiz, attempt: QuizAttempt, onDismiss: () -> Unit) {
@@ -684,11 +656,6 @@ private fun MarkAttemptSheet(viewModel: CampusViewModel, quiz: Quiz, attempt: Qu
   }
 }
 
-// =====================================================================================
-// Rescheduling a quiz (lecturer / administrator). The editor itself is in QuizEditorScreen.kt.
-// =====================================================================================
-
-/** One question while it is being written. Shared with the editor screen. */
 internal class DraftQuestion(type: QuestionType) {
   var type by mutableStateOf(type)
   var text by mutableStateOf("")
@@ -748,11 +715,6 @@ private fun RescheduleQuizSheet(viewModel: CampusViewModel, quiz: Quiz, onDismis
   }
 }
 
-// =====================================================================================
-// Google Forms style building blocks
-// =====================================================================================
-
-/** The form's title card: a coloured top edge, the title, what it is about, and the key facts. */
 @Composable
 private fun FormHeaderCard(quiz: Quiz, t: (String, String) -> String) {
   Card(
@@ -803,7 +765,6 @@ private fun FormFactChip(text: String) {
   )
 }
 
-/** One question as its own card; a blue bar on the left shows the one you are working on. */
 @Composable
 private fun FormQuestionCard(
   number: Int,
@@ -876,7 +837,6 @@ private fun FormQuestionCard(
             ),
             modifier = Modifier.fillMaxWidth().testTag("quiz_written_answer")
           )
-          // Written answers are saved a moment after typing stops.
           LaunchedEffect(question.id, answer) {
             delay(500)
             onPersist(answer)

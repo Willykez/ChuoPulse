@@ -9,8 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.FilterChip
 import androidx.compose.material.icons.filled.Notifications
-import com.willykez.campconnect.ui.components.ScreenHeading
-import com.willykez.campconnect.ui.components.ActionButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.Grade
@@ -44,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,7 +91,6 @@ fun NotificationsScreen(
   Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Summary card: how many are new, and the one action that matters
     Box(
       modifier = Modifier
         .fillMaxWidth()
@@ -136,7 +131,6 @@ fun NotificationsScreen(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Filters
     androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       items(NotifFilter.values().size) { i ->
         val f = NotifFilter.values()[i]

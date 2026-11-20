@@ -9,7 +9,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -29,12 +28,6 @@ class SupabaseClient(
   private val jsonType = "application/json; charset=utf-8".toMediaType()
   val isConfigured: Boolean get() = projectUrl.startsWith("https://") && !projectUrl.contains("YOUR_PROJECT_REF", ignoreCase = true) && publishableKey.isNotBlank() && !publishableKey.contains("YOUR_SUPABASE", ignoreCase = true)
 
-  data class AuthSession(
-    val accessToken: String,
-    val refreshToken: String?,
-    val userId: String,
-    val email: String?
-  )
 
   data class Result(val code: Int, val body: String) {
     val isSuccessful: Boolean get() = code in 200..299
@@ -98,9 +91,6 @@ class SupabaseClient(
     body = JSONObject().put("challenge_id", challengeId).put("code", code.trim()), bearer = accessToken
   )
 
-  suspend fun mfaUnenroll(accessToken: String, factorId: String): Result = request(
-    method = "DELETE", url = "$projectUrl/auth/v1/factors/${encode(factorId)}", bearer = accessToken
-  )
 
   suspend fun refresh(refreshToken: String): Result = request(
     method = "POST", url = "$projectUrl/auth/v1/token?grant_type=refresh_token",
@@ -142,10 +132,6 @@ class SupabaseClient(
     )
   }
 
-  suspend fun removeStorageObjects(bucket: String, paths: List<String>, accessToken: String): Result {
-    require(safeStorageSegment(bucket) && paths.all(::safeStoragePath)) { "Invalid storage path" }
-    return request("DELETE", "$projectUrl/storage/v1/object/$bucket", body = JSONObject().put("prefixes", JSONArray(paths)), bearer = accessToken)
-  }
 
   /** Inserts one row and returns it (`return=representation`). Row-level security decides if it is allowed. */
   suspend fun insert(table: String, row: JSONObject, accessToken: String): Result = request(

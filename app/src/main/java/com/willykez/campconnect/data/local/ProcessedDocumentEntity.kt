@@ -20,17 +20,13 @@ data class ProcessedDocumentEntity(
   val uploaderName: String,
   val timestamp: Long,
   val extractedSummary: String,
-  /** Comma-separated display terms to keep this entity migration-friendly. */
   val keyTopics: String,
-  /** Newline-separated objectives. */
   val learningObjectives: String,
-  /** Newline-separated study tips. */
   val studyTips: String,
   val wordCount: Int,
   val pageCount: Int,
   val readingTimeMinutes: Int,
   val extractionStatus: String,
-  /** Optional content URI used by the built-in viewer when the source file is still available. */
   val sourceUri: String? = null,
   val category: String = "Notes",
   val tags: String = ""

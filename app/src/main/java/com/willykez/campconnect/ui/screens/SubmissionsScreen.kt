@@ -22,22 +22,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Grade
-import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,12 +44,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.willykez.campconnect.data.model.AttachmentFile
-import com.willykez.campconnect.data.model.ContentApprovalStatus
 import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.data.model.StudentSubmission
 import com.willykez.campconnect.ui.components.StatusBadge
 import com.willykez.campconnect.ui.theme.DangerRed
-import com.willykez.campconnect.ui.theme.DangerRedLight
 import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.SuccessGreenLight
@@ -92,7 +83,6 @@ fun SubmissionsScreen(
   ) {
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Header
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.SpaceBetween,
@@ -114,7 +104,6 @@ fun SubmissionsScreen(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Filter Chips
     LazyRow(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
       modifier = Modifier.fillMaxWidth()
@@ -251,7 +240,6 @@ fun SubmissionCard(
           )
         }
 
-        // Grade Badge
         if (isGraded) {
           StatusBadge(
             text = "Grade: ${submission.grade}",
@@ -276,7 +264,7 @@ fun SubmissionCard(
       )
 
       Text(
-        text = "ID: ${submission.studentNumber} • Submitted: ${submission.submittedAt}",
+        text = "ID: ${submission.studentNumber} • Submitted: ${submission.submittedAt}${if (submission.isLate) " • Late" else ""}",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
@@ -292,7 +280,6 @@ fun SubmissionCard(
 
       Spacer(modifier = Modifier.height(10.dp))
 
-      // File Attachment Row
       Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -328,7 +315,6 @@ fun SubmissionCard(
             }
           }
 
-          // In-App Document Preview Button
           ActionButton(
             label = "View",
             icon = Icons.Default.Visibility,
@@ -339,7 +325,6 @@ fun SubmissionCard(
         }
       }
 
-      // Feedback display if available
       if (!submission.feedback.isNullOrBlank()) {
         Spacer(modifier = Modifier.height(8.dp))
         Box(
@@ -366,7 +351,6 @@ fun SubmissionCard(
         }
       }
 
-      // Action row for Lecturers & Admins
       if (currentUserRole == Role.LECTURER || currentUserRole == Role.ADMIN) {
         Spacer(modifier = Modifier.height(10.dp))
         Row(

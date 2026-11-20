@@ -5,15 +5,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,10 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
@@ -53,7 +48,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -80,7 +74,6 @@ import com.willykez.campconnect.data.model.AttachmentFile
 import com.willykez.campconnect.data.model.DeadlineItem
 import com.willykez.campconnect.data.model.Role
 import com.willykez.campconnect.data.model.StudentSubmission
-import com.willykez.campconnect.data.model.StudyMaterial
 import com.willykez.campconnect.ui.components.AddDeadlineDialog
 import com.willykez.campconnect.ui.components.AnnouncementDetailDialog
 import com.willykez.campconnect.ui.components.CancelSessionDialog
@@ -104,7 +97,6 @@ import com.willykez.campconnect.ui.screens.PlatformScreen
 import com.willykez.campconnect.ui.screens.SplashScreen
 import com.willykez.campconnect.ui.screens.MaintenanceScreen
 import com.willykez.campconnect.ui.screens.WaitingRoomScreen
-import com.willykez.campconnect.ui.screens.AnnouncementsScreen
 import com.willykez.campconnect.ui.screens.DeadlinesScreen
 import com.willykez.campconnect.ui.screens.HomeScreen
 import com.willykez.campconnect.ui.screens.MaterialsScreen
@@ -120,12 +112,6 @@ import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.viewmodel.CampusViewModel
 import com.willykez.campconnect.viewmodel.ScreenTab
 
-/**
- * Root of the app. Decides what a person may see:
- *  - not signed in -> sign-in screens
- *  - signed in but not approved by the registry -> waiting room, nothing else
- *  - approved -> the app
- */
 @Composable
 fun CampusConnectApp(
   viewModel: CampusViewModel = viewModel()
@@ -138,9 +124,6 @@ fun CampusConnectApp(
   var splashDone by rememberSaveable { mutableStateOf(false) }
   val restoring by viewModel.restoring.collectAsState()
 
-  // Back at the very top of the app: the first press asks, a second press within two seconds exits.
-  // Screens, tabs, sheets and dialogs register their own Back handling after this one, so they win;
-  // this one only runs when nothing else needs Back.
   val rootContext = LocalContext.current
   var lastBackAt by remember { mutableStateOf(0L) }
   BackHandler(enabled = splashDone && !restoring) {
@@ -166,7 +149,6 @@ fun CampusConnectApp(
       current == null -> AuthGate(viewModel)
       user.status != AccountStatus.APPROVED -> WaitingRoomScreen(viewModel)
       user.isPlatformAdmin -> PlatformScreen(viewModel)
-      // Campus offline mode: the whole campus is paused until the app manager lifts it.
       paused -> MaintenanceScreen(viewModel)
       else -> CampusMainApp(viewModel)
     }
@@ -189,8 +171,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
   val remindedIds by viewModel.remindedAnnouncements.collectAsState()
   val currentTab by viewModel.currentTab.collectAsState()
 
-  // Back goes up one level instead of leaving the app: open dialogs and the viewer close on their
-  // own, then any other tab returns to Home, and only Home lets the phone close the app.
   BackHandler(enabled = currentTab != ScreenTab.HOME) { viewModel.setTab(ScreenTab.HOME) }
   val currentUser by viewModel.currentUser.collectAsState()
   val isOffline by viewModel.isOffline.collectAsState()
@@ -202,7 +182,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
   val sessions by viewModel.sessions.collectAsState()
   val announcements by viewModel.announcements.collectAsState()
 
-  // Dialog & Viewer states
   var selectedAnnouncementId by remember { mutableStateOf<String?>(null) }
   var showPublishDialog by remember { mutableStateOf(false) }
   var showUploadDialog by remember { mutableStateOf(false) }
@@ -214,7 +193,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
   var submitWorkDeadline by remember { mutableStateOf<DeadlineItem?>(null) }
   var gradingSubmission by remember { mutableStateOf<StudentSubmission?>(null) }
 
-  // Built-in Document Viewer state
   var editingDeadline by remember { mutableStateOf<DeadlineItem?>(null) }
   var viewingDocument by remember { mutableStateOf<AttachmentFile?>(null) }
   var viewingDocAuthor by remember { mutableStateOf<String?>(null) }
@@ -253,7 +231,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
                     fontWeight = FontWeight.Bold
                   )
                   Spacer(modifier = Modifier.width(6.dp))
-                  // Role Badge
                   Box(
                     modifier = Modifier
                       .clip(RoundedCornerShape(4.dp))
@@ -536,7 +513,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
       }
       }
 
-      // Announcement Detail Dialog
       selectedAnnouncementId?.let { id ->
         val announcement = announcements.find { it.id == id }
         if (announcement != null) {
@@ -572,7 +548,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         }
       }
 
-      // Publish Announcement Dialog
       if (showPublishDialog) {
         PublishAnnouncementDialog(
           options = viewModel.audienceOptions(),
@@ -589,7 +564,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Edit Announcement Dialog
       editingAnnouncement?.let { ann ->
         EditAnnouncementDialog(
           announcement = ann,
@@ -600,7 +574,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Upload Study Material Dialog
       if (showUploadDialog) {
         UploadMaterialDialog(
           onDismiss = { showUploadDialog = false },
@@ -614,7 +587,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Add Deadline Dialog
       if (showAddDeadlineDialog) {
         AddDeadlineDialog(
           onDismiss = { showAddDeadlineDialog = false },
@@ -627,7 +599,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Edit / reschedule a deadline
       editingDeadline?.let { dl ->
         EditDeadlineSheet(
           deadline = dl,
@@ -639,7 +610,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Student Coursework Submit Dialog
       submitWorkDeadline?.let { dl ->
         SubmitWorkDialog(
           deadline = dl,
@@ -661,7 +631,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Lecturer / Admin Grade Submission Dialog
       gradingSubmission?.let { sub ->
         GradeSubmissionDialog(
           submission = sub,
@@ -677,7 +646,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         )
       }
 
-      // Change Venue Dialog
       venueChangeSessionId?.let { sId ->
         val session = sessions.find { it.id == sId }
         if (session != null) {
@@ -691,7 +659,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         }
       }
 
-      // Cancel Session Dialog
       cancelSessionId?.let { sId ->
         val session = sessions.find { it.id == sId }
         if (session != null) {
@@ -705,7 +672,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
         }
       }
 
-      // Built-in Document Viewer Dialog
       viewingDocument?.let { doc ->
         val appContext = LocalContext.current
         val analysisService = remember(appContext) { DocumentAnalysisService.get(appContext) }

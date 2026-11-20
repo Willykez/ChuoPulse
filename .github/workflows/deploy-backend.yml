@@ -1,11 +1,5 @@
 name: Deploy backend (database, functions, AI key)
 
-# Run by hand from the Actions tab. Needs these repository secrets:
-#   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD   (to deploy)
-#   AI_API_KEY    (optional) the AI provider key. Leave it out if the app manager saves the key
-#                 on the AI settings screen inside the app instead (that key is kept in the database).
-#   AI_PROVIDER   (optional) gemini (default) or anthropic
-#   AI_MODEL      (optional) e.g. gemini-2.5-flash
 on:
   workflow_dispatch:
     inputs:
@@ -43,12 +37,14 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
           AI_MODEL: ${{ secrets.AI_MODEL }}
+          CLEANUP_SECRET: ${{ secrets.CLEANUP_SECRET }}
         run: |
           args=""
           [ -n "$AI_API_KEY" ]  && args="$args AI_API_KEY=$AI_API_KEY"
           [ -n "$AI_PROVIDER" ] && args="$args AI_PROVIDER=$AI_PROVIDER"
           [ -n "$AI_MODEL" ]    && args="$args AI_MODEL=$AI_MODEL"
-          if [ -n "$args" ]; then supabase secrets set $args; else echo "No AI secrets set; the key is expected on the AI settings screen."; fi
+          [ -n "$CLEANUP_SECRET" ] && args="$args CLEANUP_SECRET=$CLEANUP_SECRET"
+          if [ -n "$args" ]; then supabase secrets set $args; else echo "No optional secrets set."; fi
 
       - name: Deploy Edge Functions
         run: |
@@ -56,4 +52,5 @@ jobs:
           supabase functions deploy admin-manage-user
           supabase functions deploy campus-wipe-files
           supabase functions deploy ai-analyze
+          supabase functions deploy storage-cleanup
           supabase functions deploy confirm-signup --no-verify-jwt

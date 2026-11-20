@@ -32,10 +32,6 @@ import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
-/**
- * Choose, by hand, which courses belong to a programme. Students of the programme see exactly the
- * ticked courses. "Not in a programme" lists the courses that were imported without one.
- */
 @Composable
 fun ProgrammeCoursesSheet(
   viewModel: CampusViewModel,
@@ -47,7 +43,7 @@ fun ProgrammeCoursesSheet(
 ) {
   var programme by remember { mutableStateOf(initialProgramme?.takeIf { it in programmes } ?: programmes.firstOrNull().orEmpty()) }
   var selected by remember(programme) { mutableStateOf(catalog[programme].orEmpty()) }
-  var filter by remember { mutableStateOf(0) } // 0 all, 1 not in any programme, 2 ticked
+  var filter by remember { mutableStateOf(0) }
   var query by remember { mutableStateOf("") }
 
   val inAnyProgramme = catalog.values.flatten().toSet()

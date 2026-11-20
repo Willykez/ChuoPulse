@@ -1,7 +1,10 @@
 // Account actions that need the service key: reset a password, change a login email, pause/resume
-// (blocks sign-in as well as data), and delete. The DATABASE decides who may act on whom
-// (public.can_manage_user, run with the CALLER's JWT, which also enforces the administrator's second step).
-// The service-role key lives only here, in the function's own environment, never in the app.
+// (blocks sign-in as well as data), delete, and erase (privacy request). The DATABASE decides who may
+// act on whom (public.can_manage_user, run with the CALLER's JWT, which also enforces the
+// administrator's second step). The service-role key lives only here, never in the app.
+//
+// Every powerful action is written to the audit log BEFORE it is carried out (if the log cannot be
+// written, nothing happens), and actions that must lock someone out also end their sessions.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -48,17 +51,46 @@ Deno.serve(async (req) => {
   const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } })
   const FOREVER = '876000h' // about 100 years: "banned" until resumed
 
+  // Audit first. Returns a Response when the trail could not be written (and then nothing is done).
+  const audit = async (what: string, details = ''): Promise<Response | null> => {
+    const { error } = await userClient.rpc('log_account_action', { p_target: userId, p_action: what, p_details: details })
+    return error ? json(500, { error: 'audit_failed' }) : null
+  }
+  const endSessions = async () => { await admin.rpc('revoke_user_sessions', { p_user: userId }) }
+  const randomSecret = () => crypto.randomUUID() + crypto.randomUUID()
+
+  // Keep the person's record (their submissions and grades hang on it) but remove everything personal
+  // from the sign-in account too, and lock it for good.
+  const lockAccount = async () => {
+    await admin.auth.admin.updateUserById(userId, {
+      email: `erased-${userId.replace(/-/g, '').slice(0, 12)}@invalid.invalid`,
+      password: randomSecret(), email_confirm: true, ban_duration: FOREVER,
+    })
+  }
+  // Delete = remove the sign-in account (and with it the profile and its work). If something they wrote
+  // still points at them (announcements, grades), keep the record: erase the personal data and lock it.
+  const removeAccount = async () => {
+    const { error } = await admin.auth.admin.deleteUser(userId)
+    if (!error) return { soft: false as const }
+    await admin.rpc('erase_person_data', { p_user: userId })
+    await lockAccount()
+    return { soft: true as const, detail: error.message }
+  }
+
   switch (action) {
     case 'reset_password': {
       const password = typeof i.password === 'string' ? i.password : ''
       if (password.length < 8) return json(400, { error: 'weak_password' })
+      const stop = await audit('PASSWORD_RESET'); if (stop) return stop
       const { error } = await admin.auth.admin.updateUserById(userId, { password, email_confirm: true })
       if (error) return json(400, { error: 'reset_failed', detail: error.message })
+      await endSessions()   // whoever held the old password is signed out everywhere
       return json(200, { ok: true })
     }
     case 'update_login': {
       const email = str('email').toLowerCase()
       if (!EMAIL.test(email)) return json(400, { error: 'invalid_email' })
+      const stop = await audit('LOGIN_EMAIL_CHANGED', `new address: ${email}`); if (stop) return stop
       const { error } = await admin.auth.admin.updateUserById(userId, { email, email_confirm: true })
       if (error) {
         const m = (error.message ?? '').toLowerCase()
@@ -73,6 +105,7 @@ Deno.serve(async (req) => {
       const { error } = await userClient.rpc('admin_set_status', { p_user: userId, p_pause: true, p_reason: str('reason') })
       if (error) return json(400, { error: 'pause_failed', detail: error.message })
       await admin.auth.admin.updateUserById(userId, { ban_duration: FOREVER })
+      await endSessions()
       return json(200, { ok: true })
     }
     case 'resume': {
@@ -82,12 +115,19 @@ Deno.serve(async (req) => {
       return json(200, { ok: true })
     }
     case 'delete': {
-      const { error } = await admin.auth.admin.deleteUser(userId)
-      if (!error) return json(200, { ok: true })
-      // Something they wrote still points at them (announcements, grades). Keep the record, remove the access.
-      await admin.from('profiles').update({ status: 'rejected' }).eq('id', userId)
-      await admin.auth.admin.updateUserById(userId, { ban_duration: FOREVER })
-      return json(200, { ok: true, soft: true, detail: error.message })
+      const stop = await audit('ACCOUNT_DELETED'); if (stop) return stop
+      await endSessions()
+      const r = await removeAccount()
+      return json(200, r.soft ? { ok: true, soft: true, detail: r.detail } : { ok: true })
+    }
+    case 'erase': {
+      // A privacy request: personal data goes, the academic record stays (attributed to "Deleted user").
+      const stop = await audit('ACCOUNT_ERASED'); if (stop) return stop
+      await endSessions()
+      const { error: eErr } = await admin.rpc('erase_person_data', { p_user: userId })
+      if (eErr) return json(400, { error: 'erase_failed', detail: eErr.message })
+      await lockAccount()   // never deleteUser here: it would cascade away the grades we are keeping
+      return json(200, { ok: true, erased: true })
     }
     default:
       return json(400, { error: 'unknown_action' })

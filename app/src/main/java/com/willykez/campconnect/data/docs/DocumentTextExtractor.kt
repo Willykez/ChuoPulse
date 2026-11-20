@@ -20,27 +20,16 @@ import java.util.zip.ZipFile
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** The words a file contains, split into pages or slides where the format has them. */
 data class ExtractedDocument(
   val sections: List<String>,
-  /** Real number of pages or slides in the file. */
   val pageCount: Int,
-  /** How many pages were actually read (large scanned files are capped). */
   val pagesRead: Int = sections.size
 ) {
   val text: String get() = sections.joinToString("\n\n")
 }
 
-/** A problem the person can understand and act on, never a stack trace. */
 class ExtractionException(message: String) : Exception(message)
 
-/**
- * Reads the text out of files so they can be summarised. Everything happens on the phone.
- *  - Word, PowerPoint, Excel and OpenDocument files are zip archives of XML: read directly.
- *  - PDFs are drawn page by page and read with on-device text recognition, so scanned and
- *    typed PDFs both work.
- *  - Photos and screenshots are read with the same on-device text recognition.
- */
 object DocumentTextExtractor {
   const val MAX_OCR_PAGES = 20
   private const val MAX_CHARS = 300_000
@@ -80,8 +69,6 @@ object DocumentTextExtractor {
       raw.copy(sections = capTotal(cleaned), pagesRead = cleaned.size)
     }
 
-  // ---------- Office / OpenDocument ----------
-
   private fun single(text: String) = ExtractedDocument(listOf(text), 1)
 
   private fun zipText(file: File, entry: String, vararg breakTags: String): String =
@@ -102,7 +89,6 @@ object DocumentTextExtractor {
     )
   }
 
-  /** One section per worksheet, one line per row, cells separated by " │ ". */
   private fun xlsx(file: File): ExtractedDocument = openZip(file) { zip ->
     val shared = zip.getEntry("xl/sharedStrings.xml")?.let { e ->
       val xml = zip.getInputStream(e).bufferedReader().use { it.readText() }
@@ -139,16 +125,10 @@ object DocumentTextExtractor {
     else ExtractedDocument(sheets, sheets.size)
   }
 
-  /**
-   * Old binary Word, PowerPoint and Excel files (.doc .ppt .xls). They have no simple text layer, so
-   * this reads the readable text runs inside them. It is a plain preview, good for reading and for
-   * summaries; layout and tables are lost. Newer .docx/.pptx/.xlsx files show fully.
-   */
   private fun legacyOffice(file: File, ext: String): ExtractedDocument {
     if (file.length() > 25L * 1024 * 1024) throw ExtractionException("This old-format file is too large to preview here. Open it in another app.")
     val bytes = file.readBytes()
     val out = StringBuilder()
-    // UTF-16 text (what Word and PowerPoint store for most of the words)
     var i = 0
     val run = StringBuilder()
     fun flush() {
@@ -162,7 +142,6 @@ object DocumentTextExtractor {
       if (ok) { run.append(if (lo == 13) '\n' else lo.toChar()); i += 2 } else { flush(); i += 1 }
     }
     flush()
-    // 8-bit text (Excel strings, older Word)
     if (out.length < 200) {
       run.setLength(0)
       for (b in bytes) {
@@ -227,8 +206,6 @@ object DocumentTextExtractor {
     return file.readText(Charsets.UTF_8)
   }
 
-  // ---------- PDF and photos (on-device text recognition) ----------
-
   private suspend fun pdf(file: File): ExtractedDocument {
     val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     var descriptor: ParcelFileDescriptor? = null
@@ -264,7 +241,7 @@ object DocumentTextExtractor {
       val width = 1600
       val height = ((page.height.toFloat() / page.width) * width).toInt().coerceIn(200, 2800)
       val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-      bitmap.eraseColor(Color.WHITE) // PDFs draw on a transparent page; text recognition needs white
+      bitmap.eraseColor(Color.WHITE)
       page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
       return bitmap
     } finally {
@@ -304,8 +281,6 @@ object DocumentTextExtractor {
     addOnSuccessListener { cont.resume(it) }
     addOnFailureListener { cont.resumeWithException(it) }
   }
-
-  // ---------- Clean-up ----------
 
   private fun tidy(s: String): String = s
     .replace("\u00A0", " ")
