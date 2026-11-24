@@ -5,6 +5,7 @@
 // Every approved person may call it; each person has a daily limit (a Tanzanian day) and a call that
 // fails because of the provider is NOT charged against it.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { callModel, providerErrorResponse } from '../_shared/ai_provider.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +18,6 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 
 const MAX_CHARS = 60_000
 const MAX_BODY_BYTES = 400_000
-const TIMEOUT_MS = 45_000
 const DAILY_LIMIT = Number(Deno.env.get('AI_DAILY_LIMIT') ?? '30')
 
 const instruction = (name: string, course: string) => `You are a study assistant for university students in East Africa.
@@ -34,77 +34,22 @@ Rules:
 Document name: ${name}
 Course: ${course}`
 
-function parseModelJson(text: string) {
-  const cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
-  const o = JSON.parse(cleaned)
+const ANALYZE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    summary: { type: 'STRING' },
+    key_topics: { type: 'ARRAY', items: { type: 'STRING' } },
+    objectives: { type: 'ARRAY', items: { type: 'STRING' } },
+    study_tips: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: ['summary', 'key_topics', 'objectives', 'study_tips'],
+}
+
+function shapeResult(o: Record<string, unknown>) {
   const list = (v: unknown) => Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, 10) : []
   const summary = String(o.summary ?? '').trim()
   if (!summary) throw new Error('empty_summary')
   return { summary, key_topics: list(o.key_topics), objectives: list(o.objectives), study_tips: list(o.study_tips) }
-}
-
-class ProviderError extends Error {
-  constructor(message: string, public status: number) { super(message) }
-}
-
-// One retry for rate limits and temporary provider trouble; a hard timeout so a stuck provider
-// cannot hold the request (and the person's quota) open.
-async function post(url: string, init: RequestInit): Promise<Response> {
-  let last: Response | undefined
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      last = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
-    } catch {
-      throw new ProviderError('timeout', 504)
-    }
-    if (last.status !== 429 && last.status < 500) return last
-    if (attempt === 0) await new Promise((r) => setTimeout(r, 1200))
-  }
-  return last!
-}
-
-async function callGemini(key: string, model: string, prompt: string, text: string) {
-  const r = await post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: `${prompt}\n\n--- DOCUMENT ---\n${text}` }] }],
-      generationConfig: {
-        temperature: 0.3,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'OBJECT',
-          properties: {
-            summary: { type: 'STRING' },
-            key_topics: { type: 'ARRAY', items: { type: 'STRING' } },
-            objectives: { type: 'ARRAY', items: { type: 'STRING' } },
-            study_tips: { type: 'ARRAY', items: { type: 'STRING' } },
-          },
-          required: ['summary', 'key_topics', 'objectives', 'study_tips'],
-        },
-      },
-    }),
-  })
-  if (!r.ok) throw new ProviderError(await r.text(), r.status)
-  const body = await r.json()
-  if (body?.promptFeedback?.blockReason) throw new ProviderError('blocked', 422)
-  const out = body?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? ''
-  return parseModelJson(out)
-}
-
-async function callAnthropic(key: string, model: string, prompt: string, text: string) {
-  const r = await post('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model, max_tokens: 1500, temperature: 0.3,
-      messages: [{ role: 'user', content: `${prompt}\n\n--- DOCUMENT ---\n${text}` }],
-    }),
-  })
-  if (!r.ok) throw new ProviderError(await r.text(), r.status)
-  const body = await r.json()
-  const out = (body?.content ?? []).map((c: { text?: string }) => c.text ?? '').join('')
-  return parseModelJson(out)
 }
 
 Deno.serve(async (req) => {
@@ -162,22 +107,15 @@ Deno.serve(async (req) => {
   const refund = async () => { if (metered) await admin.rpc('ai_refund_use', { p_user: me.user.id }) }
 
   try {
-    const result = provider === 'anthropic'
-      ? await callAnthropic(key, model, instruction(name, course), text)
-      : await callGemini(key, model, instruction(name, course), text)
+    const raw = await callModel({
+      provider, key, model, prompt: instruction(name, course), text,
+      geminiSchema: ANALYZE_SCHEMA, maxTokens: 1500,
+    })
+    const result = shapeResult(raw as Record<string, unknown>)
     return json(200, { ok: true, provider, model, ...result })
   } catch (e) {
-    // The person did nothing wrong, so the attempt is given back.
     await refund()
-    const status = (e as { status?: number }).status ?? 0
-    const message = String((e as Error).message ?? '')
-    // Never echo provider error text back (it can contain account details).
-    if (status === 401 || status === 403 || (status === 400 && message.includes('API key'))) {
-      return json(502, { error: 'ai_key_rejected' })
-    }
-    if (status === 422) return json(422, { error: 'ai_blocked' })
-    if (status === 429) return json(503, { error: 'ai_busy' })
-    if (status === 504) return json(504, { error: 'ai_timeout' })
-    return json(502, { error: 'ai_failed' })
+    const failure = providerErrorResponse(e)
+    return json(failure.status, { error: failure.error })
   }
 })

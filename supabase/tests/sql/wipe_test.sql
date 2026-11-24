@@ -11,13 +11,11 @@ insert into public.announcements (author_id,title,body,audience,course_code,atta
 insert into public.class_sessions (course_code,lecturer_id,day_of_week,start_time,end_time,venue) values ('CUOM:CS210',test.id('lec_c'),1,'09:00','10:00','LH1');
 insert into public.study_materials (course_code,title,uploader_id,storage_path,file_name,mime_type,size_bytes) values ('CUOM:CS210','Notes',test.id('lec_c'),'CUOM:CS210/'||test.id('lec_c')::text||'/n.pdf','n.pdf','x',1);
 insert into public.deadlines (id,course_code,lecturer_id,title,due_at) values ('d0000000-0000-0000-0000-000000000001','CUOM:CS210',test.id('lec_c'),'Essay',now()+interval '3 days');
-select public.create_quiz('CS210','Q',' ',20, now()-interval '1 minute', now()+interval '2 hours','[{"kind":"multiple_choice","body":"2+2?","options":["3","4"],"correct":1,"points":2}]'::jsonb);
 insert into public.processed_documents (course_code,uploader_id,title,file_name) values ('CUOM:CS210',test.id('lec_c'),'Doc','d.pdf');
 select test.logout(); select test.login(test.id('stu1'));
 insert into public.submissions (deadline_id,course_code,student_id,storage_path,file_name,mime_type,size_bytes) values ('d0000000-0000-0000-0000-000000000001','CUOM:CS210',test.id('stu1'),test.id('stu1')::text||'/d1/a.pdf','a.pdf','application/pdf',1);
 insert into public.deadline_done (deadline_id,student_id) values ('d0000000-0000-0000-0000-000000000001',test.id('stu1'));
 select public.register_device('k','p');
-select public.start_quiz_attempt((select id from public.quizzes limit 1));
 select test.logout();
 select 'rows before: profiles(CUOM)=' || (select count(*) from public.profiles where university_id=(select id from public.universities where code='CUOM')) || ' announcements=' || (select count(*) from public.announcements) || ' submissions=' || (select count(*) from public.submissions);
 select test.login(test.id('mgr'));

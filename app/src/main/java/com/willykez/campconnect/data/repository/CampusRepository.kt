@@ -5,14 +5,6 @@ import com.willykez.campconnect.data.auth.DeviceSession
 import com.willykez.campconnect.data.auth.Session
 import com.willykez.campconnect.data.model.AccountStatus
 import com.willykez.campconnect.util.DeadlineTime
-import com.willykez.campconnect.data.model.StartResult
-import com.willykez.campconnect.data.model.QuizScore
-import com.willykez.campconnect.data.model.QuizQuestion
-import com.willykez.campconnect.data.model.QuizError
-import com.willykez.campconnect.data.model.QuizAttempt
-import com.willykez.campconnect.data.model.Quiz
-import com.willykez.campconnect.data.model.QuestionType
-import com.willykez.campconnect.data.model.AttemptStatus
 import com.willykez.campconnect.data.model.Announcement
 import com.willykez.campconnect.data.model.AnnouncementPriority
 import com.willykez.campconnect.data.model.AppLanguage
@@ -28,6 +20,10 @@ import com.willykez.campconnect.data.model.SessionStatus
 import com.willykez.campconnect.data.model.StudentSubmission
 import com.willykez.campconnect.data.model.StudyMaterial
 import com.willykez.campconnect.data.model.UserProfile
+import com.willykez.campconnect.data.docs.CatalogContext
+import com.willykez.campconnect.data.docs.LecturerRef
+import com.willykez.campconnect.data.docs.SessionRef
+import com.willykez.campconnect.data.docs.TimetableProposal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +35,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -100,7 +97,6 @@ data class CampusSummary(
 class CampusRepository {
 
   companion object {
-    const val SUBMIT_GRACE_MS = 10_000L
     const val DAILY_URGENT_LIMIT = 2
   }
 
@@ -130,7 +126,7 @@ class CampusRepository {
   private val _isOffline = MutableStateFlow(false)
   val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
-  private val _lastSyncedAt = MutableStateFlow(System.currentTimeMillis())
+  private val _lastSyncedAt = MutableStateFlow(0L)
   val lastSyncedAt: StateFlow<Long> = _lastSyncedAt.asStateFlow()
 
   private val _is24HourFormat = MutableStateFlow(true)
@@ -301,12 +297,6 @@ class CampusRepository {
     AudienceType.COURSE -> courseStudentIds(code)
   }
 
-  init {
-    scope.launch {
-      auth.session.collect { s -> if (s != null) _lastSyncedAt.value = System.currentTimeMillis() }
-    }
-  }
-
   fun canEditOrDelete(uploaderOrAuthorId: String): Boolean {
     val user = currentUser.value
     if (!isActive(user)) return false
@@ -382,11 +372,6 @@ class CampusRepository {
     _is24HourFormat.value = !_is24HourFormat.value
   }
 
-  fun toggleOfflineSimulation() {
-    _isOffline.value = !_isOffline.value
-    if (!_isOffline.value) _lastSyncedAt.value = System.currentTimeMillis()
-  }
-
   fun triggerSync() {
     syncNow()
   }
@@ -414,9 +399,9 @@ class CampusRepository {
     _sessions.value = emptyList(); _announcements.value = emptyList(); _materials.value = emptyList()
     _deadlines.value = emptyList(); _submissions.value = emptyList(); _notifications.value = emptyList()
     _readReceipts.value = emptyMap(); _doneTicks.value = emptyMap()
-    _quizzes.value = emptyList(); _attempts.value = emptyList(); attemptAlias.clear()
     _classMembers.value = emptyList(); _repLecturers.value = emptyMap()
     CloudFiles.clear()
+    Backend.appContext?.let { SyncCache.clearPersonal(it) }
   }
 
   fun markAnnouncementRead(id: String) {
@@ -862,250 +847,6 @@ class CampusRepository {
     if (isUuid(id)) push { remote.patchRows("deadlines", "id=eq.$id", JSONObject().put("approval", CloudSync.approvalText(status))) }
   }
 
-  private val _quizzes = MutableStateFlow<List<Quiz>>(emptyList())
-  private val _attempts = MutableStateFlow<List<QuizAttempt>>(emptyList())
-
-  val quizzes: StateFlow<List<Quiz>> = combine(_quizzes, currentUser) { list, user ->
-    list.filter { canSeeQuiz(it, user) }.map { if (user.role == Role.STUDENT) it.withoutAnswers() else it }
-  }.stateIn(scope, SharingStarted.Eagerly, emptyList())
-
-  val attempts: StateFlow<List<QuizAttempt>> = combine(_attempts, _quizzes, currentUser) { list, quizList, user ->
-    list.filter { a -> quizList.firstOrNull { it.id == a.quizId }?.let { canSeeAttempt(a, it, user) } ?: false }
-  }.stateIn(scope, SharingStarted.Eagerly, emptyList())
-
-  private fun canSeeQuiz(q: Quiz, user: UserProfile): Boolean {
-    if (!isActive(user) || !sameCampus(q.lecturerId, user)) return false
-    return when (user.role) {
-      Role.ADMIN -> true
-      Role.LECTURER -> q.lecturerId == user.id || baseCourse(q.courseCode) in user.teachesCourses
-      Role.STUDENT -> baseCourse(q.courseCode) in user.enrolledCourses
-    }
-  }
-
-  private fun canSeeAttempt(a: QuizAttempt, q: Quiz, user: UserProfile): Boolean {
-    if (!isActive(user) || !sameCampus(q.lecturerId, user)) return false
-    return when (user.role) {
-      Role.STUDENT -> a.studentId == user.id
-      Role.LECTURER -> q.lecturerId == user.id
-      Role.ADMIN -> true
-    }
-  }
-
-  private fun validateWindow(durationMinutes: Int, opensAt: Long, closesAt: Long, now: Long): QuizError? = when {
-    durationMinutes !in 1..180 -> QuizError.BAD_DURATION
-    closesAt <= opensAt || closesAt <= now -> QuizError.BAD_WINDOW
-    closesAt - opensAt < durationMinutes * 60_000L -> QuizError.BAD_WINDOW
-    else -> null
-  }
-
-  private fun validateQuestions(questions: List<QuizQuestion>): QuizError? {
-    if (questions.isEmpty() || questions.size > 50) return QuizError.NO_QUESTIONS
-    for (q in questions) {
-      if (q.text.isBlank() || q.points !in 1..100) return QuizError.BAD_QUESTION
-      if (q.type == QuestionType.MULTIPLE_CHOICE) {
-        if (q.options.size !in 2..6 || q.options.any { it.isBlank() }) return QuizError.BAD_QUESTION
-        if (q.correctOption == null || q.correctOption !in q.options.indices) return QuizError.BAD_QUESTION
-      }
-    }
-    return null
-  }
-
-  fun createQuiz(
-    courseCode: String,
-    title: String,
-    instructions: String,
-    durationMinutes: Int,
-    opensAt: Long,
-    closesAt: Long,
-    questions: List<QuizQuestion>,
-    now: Long = System.currentTimeMillis()
-  ): QuizError? {
-    val author = currentUser.value
-    if (!isActive(author) || author.role == Role.STUDENT) return QuizError.NOT_ALLOWED
-    val code = courseCode.trim().uppercase()
-    val courseTitle = catalog.coursesFor(author.universityId)[code] ?: return QuizError.UNKNOWN_COURSE
-    if (author.role == Role.LECTURER && baseCourse(code) !in author.teachesCourses) return QuizError.NOT_ALLOWED
-    if (title.isBlank()) return QuizError.TITLE_REQUIRED
-    validateQuestions(questions)?.let { return it }
-    validateWindow(durationMinutes, opensAt, closesAt, now)?.let { return it }
-
-    val quiz = Quiz(
-      id = "quiz-" + UUID.randomUUID().toString().take(6),
-      courseCode = code, courseTitle = courseTitle,
-      lecturerId = author.id, lecturerName = author.fullName,
-      title = title.trim(), instructions = instructions.trim(),
-      durationMinutes = durationMinutes, opensAt = opensAt, closesAt = closesAt,
-      questions = questions.mapIndexed { i, q -> q.copy(id = "q-${i + 1}", text = q.text.trim()) }
-    )
-    _quizzes.value = listOf(quiz) + _quizzes.value
-    push {
-      val qs = JSONArray()
-      questions.forEach { q ->
-        val o = JSONObject().put("kind", if (q.type == QuestionType.MULTIPLE_CHOICE) "multiple_choice" else "short_answer")
-          .put("body", q.text.trim()).put("points", q.points)
-        if (q.type == QuestionType.MULTIPLE_CHOICE) o.put("options", JSONArray(q.options)).put("correct", q.correctOption ?: 0)
-        else o.put("model_answer", q.modelAnswer)
-        qs.put(o)
-      }
-      remote.rpcCall("create_quiz", JSONObject().put("p_course", serverCourse(code)).put("p_title", title.trim())
-        .put("p_instructions", instructions.trim()).put("p_duration", durationMinutes)
-        .put("p_opens", CloudSync.isoOf(opensAt)).put("p_closes", CloudSync.isoOf(closesAt)).put("p_questions", qs))
-    }
-    return null
-  }
-
-  fun rescheduleQuiz(quizId: String, durationMinutes: Int, opensAt: Long, closesAt: Long, now: Long = System.currentTimeMillis()): QuizError? {
-    val quiz = _quizzes.value.find { it.id == quizId } ?: return QuizError.NOT_FOUND
-    if (!canEditOrDelete(quiz.lecturerId)) return QuizError.NOT_ALLOWED
-    validateWindow(durationMinutes, opensAt, closesAt, now)?.let { return it }
-    _quizzes.value = _quizzes.value.map { if (it.id == quizId) it.copy(durationMinutes = durationMinutes, opensAt = opensAt, closesAt = closesAt) else it }
-    if (isUuid(quizId)) push {
-      remote.rpcCall("reschedule_quiz", JSONObject().put("p_quiz", quizId).put("p_duration", durationMinutes)
-        .put("p_opens", CloudSync.isoOf(opensAt)).put("p_closes", CloudSync.isoOf(closesAt)))
-    }
-    return null
-  }
-
-  fun deleteQuiz(quizId: String): QuizError? {
-    val quiz = _quizzes.value.find { it.id == quizId } ?: return QuizError.NOT_FOUND
-    if (!canEditOrDelete(quiz.lecturerId)) return QuizError.NOT_ALLOWED
-    _quizzes.value = _quizzes.value.filterNot { it.id == quizId }
-    _attempts.value = _attempts.value.filterNot { it.quizId == quizId }
-    if (isUuid(quizId)) push { remote.rpcCall("delete_quiz", JSONObject().put("p_quiz", quizId)) }
-    return null
-  }
-
-  fun finalizeExpiredAttempts(now: Long = System.currentTimeMillis()) {
-    if (_attempts.value.none { it.status == AttemptStatus.IN_PROGRESS && it.deadlineAt + SUBMIT_GRACE_MS <= now }) return
-    _attempts.value = _attempts.value.map {
-      if (it.status == AttemptStatus.IN_PROGRESS && it.deadlineAt + SUBMIT_GRACE_MS <= now)
-        it.copy(status = AttemptStatus.AUTO_SUBMITTED, submittedAt = it.deadlineAt) else it
-    }
-  }
-
-  fun startAttempt(quizId: String, now: Long = System.currentTimeMillis()): StartResult {
-    val student = currentUser.value
-    if (!isActive(student) || student.role != Role.STUDENT) return StartResult(error = QuizError.NOT_ALLOWED)
-    val quiz = _quizzes.value.find { it.id == quizId }?.takeIf { canSeeQuiz(it, student) }
-      ?: return StartResult(error = QuizError.NOT_FOUND)
-    finalizeExpiredAttempts(now)
-    _attempts.value.find { it.quizId == quizId && it.studentId == student.id }?.let {
-      return if (it.status == AttemptStatus.IN_PROGRESS && it.deadlineAt > now) StartResult(attempt = it) else StartResult(error = QuizError.ALREADY_SUBMITTED)
-    }
-    if (now < quiz.opensAt) return StartResult(error = QuizError.NOT_OPEN_YET)
-    if (now >= quiz.closesAt) return StartResult(error = QuizError.CLOSED)
-    val attempt = QuizAttempt(
-      id = "att-" + UUID.randomUUID().toString().take(6),
-      quizId = quizId, studentId = student.id, studentName = student.fullName,
-      studentNumber = student.studentNumber ?: "STUDENT-${student.id.takeLast(4)}",
-      startedAt = now,
-      deadlineAt = minOf(now + quiz.durationMinutes * 60_000L, quiz.closesAt)
-    )
-    _attempts.value = listOf(attempt) + _attempts.value
-    if (isUuid(quizId)) push(refresh = false) {
-      val res = remote.rpcCall("start_quiz_attempt", JSONObject().put("p_quiz", quizId))
-      if (res.ok) runCatching { attemptAlias[attempt.id] = JSONArray(res.body).getJSONObject(0).getString("attempt_id") }
-      res
-    }
-    return StartResult(attempt = attempt)
-  }
-
-  private fun ownAttempt(attemptId: String): QuizAttempt? =
-    _attempts.value.find { it.id == attemptId && it.studentId == currentUser.value.id && currentUser.value.role == Role.STUDENT }
-
-  private fun cleanAnswer(question: QuizQuestion, raw: String): String? = when (question.type) {
-    QuestionType.MULTIPLE_CHOICE -> raw.trim().toIntOrNull()?.takeIf { it in question.options.indices }?.toString()
-    QuestionType.SHORT_ANSWER -> raw.take(2000)
-  }
-
-  private fun applyAnswers(attempt: QuizAttempt, answers: Map<String, String>): QuizAttempt {
-    val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return attempt
-    val merged = attempt.answers.toMutableMap()
-    answers.forEach { (qid, raw) ->
-      val q = quiz.questions.find { it.id == qid } ?: return@forEach
-      val cleaned = cleanAnswer(q, raw)
-      if (cleaned == null || cleaned.isBlank()) merged.remove(qid) else merged[qid] = cleaned
-    }
-    return attempt.copy(answers = merged)
-  }
-
-  fun saveAnswer(attemptId: String, questionId: String, answer: String, now: Long = System.currentTimeMillis()): QuizError? {
-    finalizeExpiredAttempts(now)
-    val attempt = ownAttempt(attemptId) ?: return QuizError.NOT_FOUND
-    if (attempt.status != AttemptStatus.IN_PROGRESS) {
-      return if (attempt.status == AttemptStatus.AUTO_SUBMITTED) QuizError.TIME_UP else QuizError.ALREADY_SUBMITTED
-    }
-    if (now >= attempt.deadlineAt) return QuizError.TIME_UP
-    val updated = applyAnswers(attempt, mapOf(questionId to answer))
-    _attempts.value = _attempts.value.map { if (it.id == attemptId) updated else it }
-    if (isUuid(questionId)) push(refresh = false, silent = true) {
-      val server = attemptAlias[attemptId] ?: return@push RemoteResult(true)
-      remote.rpcCall("save_quiz_answer", JSONObject().put("p_attempt", server).put("p_question", questionId)
-        .put("p_answer", updated.answers[questionId].orEmpty()))
-    }
-    return null
-  }
-
-  fun submitAttempt(
-    attemptId: String,
-    finalAnswers: Map<String, String> = emptyMap(),
-    timedOut: Boolean = false,
-    now: Long = System.currentTimeMillis()
-  ): QuizError? {
-    val attempt = ownAttempt(attemptId) ?: return QuizError.NOT_FOUND
-    if (attempt.status != AttemptStatus.IN_PROGRESS) return null
-    val inTime = now <= attempt.deadlineAt + SUBMIT_GRACE_MS
-    var working = if (inTime) applyAnswers(attempt, finalAnswers) else attempt
-    val expired = timedOut || now >= attempt.deadlineAt
-    working = working.copy(
-      status = if (expired) AttemptStatus.AUTO_SUBMITTED else AttemptStatus.SUBMITTED,
-      submittedAt = minOf(now, attempt.deadlineAt)
-    )
-    _attempts.value = _attempts.value.map { if (it.id == attemptId) working else it }
-    push {
-      val server = attemptAlias[attemptId] ?: return@push RemoteResult(true)
-      val ans = JSONObject()
-      working.answers.forEach { (q, a) -> ans.put(q, a) }
-      remote.rpcCall("submit_quiz_attempt", JSONObject().put("p_attempt", server).put("p_answers", ans))
-    }
-    val quiz = _quizzes.value.find { it.id == attempt.quizId }
-    if (quiz != null) {
-    }
-    return null
-  }
-
-  fun gradeAttempt(attemptId: String, awarded: Map<String, Int>): QuizError? {
-    val attempt = _attempts.value.find { it.id == attemptId } ?: return QuizError.NOT_FOUND
-    val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return QuizError.NOT_FOUND
-    if (!canEditOrDelete(quiz.lecturerId)) return QuizError.NOT_ALLOWED
-    if (attempt.status == AttemptStatus.IN_PROGRESS) return QuizError.NOT_ALLOWED
-    val written = quiz.questions.filter { it.type == QuestionType.SHORT_ANSWER }.associateBy { it.id }
-    val clean = awarded.filterKeys { it in written }.mapValues { (id, pts) -> pts.coerceIn(0, written.getValue(id).points) }
-    _attempts.value = _attempts.value.map { if (it.id == attemptId) it.copy(awarded = clean, marked = true) else it }
-    if (isUuid(attemptId)) push {
-      val pts = JSONObject()
-      clean.forEach { (q, p) -> pts.put(q, p) }
-      remote.rpcCall("grade_quiz_attempt", JSONObject().put("p_attempt", attemptId).put("p_points", pts))
-    }
-    return null
-  }
-
-  fun scoreOf(attemptId: String): QuizScore? {
-    val attempt = _attempts.value.find { it.id == attemptId } ?: return null
-    val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return null
-    val user = currentUser.value
-    if (!canSeeAttempt(attempt, quiz, user) || attempt.status == AttemptStatus.IN_PROGRESS) return null
-    val choice = quiz.questions.filter { it.type == QuestionType.MULTIPLE_CHOICE }
-    val written = quiz.questions.filter { it.type == QuestionType.SHORT_ANSWER }
-    return QuizScore(
-      choicePoints = choice.filter { attempt.answers[it.id]?.toIntOrNull() == it.correctOption }.sumOf { it.points },
-      choiceTotal = choice.sumOf { it.points },
-      writtenPoints = written.sumOf { attempt.awarded[it.id] ?: 0 },
-      writtenTotal = written.sumOf { it.points },
-      complete = written.isEmpty() || attempt.marked
-    )
-  }
-
   suspend fun approveUser(userId: String, role: Role, programme: String?, teaches: Set<String>): Boolean {
     if (!canApproveOrDisapprove()) return false
     val before = pendingUsers.value.find { it.id == userId } ?: return false
@@ -1220,6 +961,78 @@ class CampusRepository {
     if (!isCampusAdmin()) emptyList()
     else activeProfiles().filter { it.role == Role.LECTURER }.sortedBy { it.fullName }
 
+  data class TimetableApplyReport(
+    val programmes: Int = 0,
+    val courses: Int = 0,
+    val rooms: Int = 0,
+    val assignments: Int = 0,
+    val sessions: Int = 0,
+    val failures: List<String> = emptyList()
+  )
+
+  fun timetableContext(): CatalogContext {
+    val uni = currentUser.value.universityId
+    return CatalogContext(
+      programmes = catalog.programmesFor(uni).toSet(),
+      courses = catalog.coursesFor(uni).keys.toSet(),
+      lecturers = campusLecturers().map { LecturerRef(it.id, it.fullName) },
+      rooms = catalog.roomsFor(uni).toSet(),
+      sessions = _sessions.value.filter { it.status != SessionStatus.CANCELLED }.map {
+        SessionRef(baseCourse(it.courseCode), it.lecturerId, it.dayOfWeek, it.startTime.take(5), it.endTime.take(5), it.venue)
+      }
+    )
+  }
+
+  suspend fun applyTimetable(proposal: TimetableProposal): TimetableApplyReport = withContext(Dispatchers.IO) {
+    val uni = auth.universityUuid(currentUser.value.universityId)
+    if (!Backend.live || !isCampusAdmin() || uni == null) {
+      return@withContext TimetableApplyReport(failures = listOf("You cannot change the timetable right now."))
+    }
+    val failures = mutableListOf<String>()
+    var programmes = 0
+    var courses = 0
+    var rooms = 0
+    var assignments = 0
+    var sessions = 0
+    pushMutex.withLock {
+      for (g in proposal.programmesToApply) {
+        val r = remote.insertRow("programmes", JSONObject().put("university_id", uni).put("name", g.name))
+        if (r.ok) programmes++ else failures += "Programme ${g.name}: ${CloudSync.friendly(r)}"
+      }
+      val rows = JSONArray()
+      for (c in proposal.coursesToApply) {
+        val row = JSONObject().put("code", c.code).put("title", c.title.ifBlank { c.code })
+        if (c.programme.isNotBlank()) row.put("programme", c.programme)
+        rows.put(row)
+      }
+      if (rows.length() > 0) {
+        val r = remote.rpcCall("import_courses", JSONObject().put("p_rows", rows))
+        if (r.ok) courses = rows.length() else failures += "Courses: ${CloudSync.friendly(r)}"
+      }
+      val knownRooms = catalog.roomsFor(currentUser.value.universityId).map { it.lowercase() }.toSet()
+      val neededRooms = proposal.sessionsToApply.map { it.venue.trim() }.distinctBy { it.lowercase() }.filter { it.lowercase() !in knownRooms }
+      for (name in neededRooms) {
+        val r = remote.insertRow("rooms", JSONObject().put("university_id", uni).put("name", name))
+        if (r.ok) rooms++ else failures += "Room $name: ${CloudSync.friendly(r)}"
+      }
+      val taught = campusLecturers().flatMap { l -> l.teachesCourses.map { it to l.id } }.groupBy({ it.first }, { it.second })
+      for ((course, picks) in proposal.assignmentsToApply.groupBy { it.course }) {
+        val ids = (taught[course].orEmpty() + picks.mapNotNull { it.lecturerId }).distinct()
+        val r = remote.rpcCall("set_course_lecturers", JSONObject().put("p_course", course).put("p_lecturers", JSONArray(ids)))
+        if (r.ok) assignments += picks.size else failures += "Lecturers for $course: ${CloudSync.friendly(r)}"
+      }
+      for (s in proposal.sessionsToApply) {
+        val row = JSONObject()
+          .put("course_code", serverCourse(s.course)).put("lecturer_id", s.lecturerId).put("day_of_week", s.day)
+          .put("start_time", s.start).put("end_time", s.end).put("venue", s.venue.trim()).put("kind", s.kind)
+        val r = remote.insertRow("class_sessions", row)
+        if (r.ok) sessions++ else failures += "${s.course} ${s.start}-${s.end}: ${CloudSync.friendly(r)}"
+      }
+    }
+    pullNow()
+    TimetableApplyReport(programmes, courses, rooms, assignments, sessions, failures)
+  }
+
   fun setCourseLecturers(courseCode: String, lecturerIds: Set<String>): AssignLecturersResult {
     if (!isCampusAdmin()) return AssignLecturersResult(AssignLecturersError.NOT_ALLOWED)
     val uni = currentUser.value.universityId
@@ -1246,10 +1059,6 @@ class CampusRepository {
 
     push {
       remote.rpcCall("set_course_lecturers", JSONObject().put("p_course", code).put("p_lecturers", JSONArray(lecturerIds.toList())))
-    }
-    if (added.isNotEmpty()) {
-    }
-    if (removed.isNotEmpty()) {
     }
     return AssignLecturersResult()
   }
@@ -1351,7 +1160,6 @@ class CampusRepository {
   private val cloud = CloudSync(remote)
   private val pushMutex = Mutex()
   private val pullMutex = Mutex()
-  private val attemptAlias = java.util.concurrent.ConcurrentHashMap<String, String>()
   private val _repLecturers = MutableStateFlow<Map<String, List<Pair<String, String>>>>(emptyMap())
   private val _classMembers = MutableStateFlow<List<ClassMember>>(emptyList())
 
@@ -1398,9 +1206,16 @@ class CampusRepository {
         val snap = cloud.pull(auth.accounts.value[me.id]?.profile ?: me, code)
         if (snap == null) { _isOffline.value = true; return }
         applySnapshot(me, snap)
+        if (cloud.servedFromCache) {
+          _isOffline.value = true
+          _lastSyncedAt.value = cloud.cachedAt(me.id)
+          return
+        }
         if (me.role == Role.ADMIN) cloud.auditLog(me)?.let { _auditLogs.value = it }
+        val now = System.currentTimeMillis()
         _isOffline.value = false
-        _lastSyncedAt.value = System.currentTimeMillis()
+        _lastSyncedAt.value = now
+        cloud.markSynced(me.id, now)
         prefetchFiles(snap.files)
       } finally {
         _syncing.value = false
@@ -1434,14 +1249,6 @@ class CampusRepository {
         .sortedBy { it.name }
     } else snap.classMembers
 
-    val serverToLocal = attemptAlias.entries.associate { it.value to it.key }
-    val fromServer = snap.attempts.map { a -> serverToLocal[a.id]?.let { local -> a.copy(id = local) } ?: a }
-    val pendingLocal = _attempts.value.filter {
-      it.studentId == me.id && it.id.startsWith("att-") && it.id !in attemptAlias.keys &&
-        it.status == AttemptStatus.IN_PROGRESS && fromServer.none { s -> s.quizId == it.quizId && s.studentId == it.studentId }
-    }
-    _quizzes.value = snap.quizzes
-    _attempts.value = pendingLocal + fromServer
     _dataVersion.value++
   }
 

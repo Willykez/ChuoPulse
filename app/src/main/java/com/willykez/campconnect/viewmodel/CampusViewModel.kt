@@ -10,10 +10,6 @@ import com.willykez.campconnect.data.auth.DeviceSession
 import com.willykez.campconnect.data.auth.PasswordCheck
 import com.willykez.campconnect.data.auth.PasswordProblem
 import com.willykez.campconnect.data.model.AnnouncementPriority
-import com.willykez.campconnect.data.model.StartResult
-import com.willykez.campconnect.data.model.QuizScore
-import com.willykez.campconnect.data.model.QuizQuestion
-import com.willykez.campconnect.data.model.QuizError
 import com.willykez.campconnect.data.model.AppLanguage
 import com.willykez.campconnect.data.model.ClassSession
 import com.willykez.campconnect.data.repository.ClassMember
@@ -46,7 +42,6 @@ enum class ScreenTab {
   MATERIALS,
   PROCESSED_DOCUMENTS,
   CALENDAR,
-  QUIZZES,
   SUBMISSIONS,
   PROFILE,
   ADMIN,
@@ -70,6 +65,7 @@ class CampusViewModel(
   val lastSyncedAt = repository.lastSyncedAt
   val is24HourFormat = repository.is24HourFormat
   val sessions = repository.sessions
+  val timetableAssistant = TimetableAssistantModel(repository, viewModelScope)
   val announcements = repository.announcements
   val remindedAnnouncements = repository.remindedAnnouncements
   val materials = repository.materials
@@ -305,10 +301,6 @@ class CampusViewModel(
     repository.toggle24HourFormat()
   }
 
-  fun toggleOfflineSimulation() {
-    repository.toggleOfflineSimulation()
-  }
-
   fun triggerSync() {
     repository.triggerSync()
   }
@@ -487,73 +479,6 @@ class CampusViewModel(
   fun setDeadlineApproval(id: String, status: ContentApprovalStatus) {
     repository.setDeadlineApproval(id, status)
   }
-
-  val quizzes = repository.quizzes
-  val quizAttempts = repository.attempts
-
-  fun quizErrorText(error: QuizError): String = when (error) {
-    QuizError.NOT_ALLOWED -> t("You are not allowed to do that.", "Huruhusiwi kufanya hivyo.")
-    QuizError.UNKNOWN_COURSE -> t("Choose a course from your campus.", "Chagua kozi ya chuo chako.")
-    QuizError.TITLE_REQUIRED -> t("Give the quiz a title.", "Weka jina la jaribio.")
-    QuizError.NO_QUESTIONS -> t("Add at least one question (up to 50).", "Ongeza angalau swali moja (hadi 50).")
-    QuizError.BAD_QUESTION -> t(
-      "Every question needs text and points. Multiple choice needs 2 to 6 options and one right answer.",
-      "Kila swali linahitaji maandishi na alama. Chaguo nyingi zinahitaji chaguo 2 hadi 6 na jibu moja sahihi."
-    )
-    QuizError.BAD_DURATION -> t("Time allowed must be between 1 and 180 minutes.", "Muda lazima uwe kati ya dakika 1 na 180.")
-    QuizError.BAD_WINDOW -> t(
-      "The quiz must close in the future, after it opens, and stay open at least as long as the time allowed.",
-      "Jaribio lifungwe baadaye, baada ya kufunguliwa, na libaki wazi angalau kwa muda uliotolewa."
-    )
-    QuizError.NOT_FOUND -> t("That quiz is no longer available.", "Jaribio hilo halipo tena.")
-    QuizError.NOT_OPEN_YET -> t("This quiz has not opened yet.", "Jaribio hili halijafunguliwa bado.")
-    QuizError.CLOSED -> t("This quiz has closed.", "Jaribio hili limefungwa.")
-    QuizError.ALREADY_SUBMITTED -> t("You have already taken this quiz.", "Umeshafanya jaribio hili.")
-    QuizError.TIME_UP -> t("Time is up. Your answers were submitted.", "Muda umeisha. Majibu yako yamewasilishwa.")
-  }
-
-  fun createQuiz(
-    courseCode: String, title: String, instructions: String, durationMinutes: Int,
-    opensAt: Long, closesAt: Long, questions: List<QuizQuestion>
-  ): String? {
-    val error = repository.createQuiz(courseCode, title, instructions, durationMinutes, opensAt, closesAt, questions)
-    if (error == null) showMessage(t("Quiz created. Students have been notified.", "Jaribio limeundwa. Wanafunzi wamearifiwa."))
-    return error?.let(::quizErrorText)
-  }
-
-  fun rescheduleQuiz(quizId: String, durationMinutes: Int, opensAt: Long, closesAt: Long): String? {
-    val error = repository.rescheduleQuiz(quizId, durationMinutes, opensAt, closesAt)
-    if (error == null) showMessage(t("Quiz rescheduled. Students have been notified.", "Jaribio limepangwa upya. Wanafunzi wamearifiwa."))
-    return error?.let(::quizErrorText)
-  }
-
-  fun deleteQuiz(quizId: String) {
-    val error = repository.deleteQuiz(quizId)
-    showMessage(error?.let(::quizErrorText) ?: t("Quiz deleted.", "Jaribio limefutwa."))
-  }
-
-  fun startQuiz(quizId: String): StartResult {
-    val result = repository.startAttempt(quizId)
-    result.error?.let { showMessage(quizErrorText(it)) }
-    return result
-  }
-
-  fun saveQuizAnswer(attemptId: String, questionId: String, answer: String): QuizError? =
-    repository.saveAnswer(attemptId, questionId, answer)
-
-  fun submitQuiz(attemptId: String, finalAnswers: Map<String, String>, timedOut: Boolean) {
-    repository.submitAttempt(attemptId, finalAnswers, timedOut)
-  }
-
-  fun gradeQuiz(attemptId: String, awarded: Map<String, Int>): String? {
-    val error = repository.gradeAttempt(attemptId, awarded)
-    if (error == null) showMessage(t("Marks saved. The student has been told.", "Alama zimehifadhiwa. Mwanafunzi ameambiwa."))
-    return error?.let(::quizErrorText)
-  }
-
-  fun quizScore(attemptId: String): QuizScore? = repository.scoreOf(attemptId)
-
-  fun finalizeExpiredQuizzes() = repository.finalizeExpiredAttempts()
 
   fun addProgramme(name: String): Boolean {
     val ok = repository.addProgramme(name)

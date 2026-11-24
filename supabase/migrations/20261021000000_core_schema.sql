@@ -1,3 +1,7 @@
+-- Core schema: campuses, accounts, courses, timetable, notices, materials, deadlines, submissions, limits, audit, plus documents, course lecturers and campus details
+-- Merged, in order, from: 20261021000000_campusconnect_v2.sql, 20261024000000_processed_documents.sql, 20261025000000_course_lecturers.sql, 20261027000000_campus_details_maintenance.sql
+
+-- ===== 20261021000000_campusconnect_v2 =====
 -- =====================================================================================
 -- CampusConnect v2: merged, idempotent schema for Supabase (Postgres 15+)
 --
@@ -1863,3 +1867,188 @@ create policy cc_ann_obj_delete on storage.objects for delete to authenticated
   using (bucket_id = 'announcements'
          and ((storage.foldername(name))[1] = auth.uid()::text
               or (public.is_admin() and exists (select 1 from public.announcements a where a.attachment_path = objects.name))));
+
+-- ===== 20261024000000_processed_documents =====
+-- Processed AI summaries: Supabase is the only cloud source of truth; Room is the offline cache.
+create table if not exists public.processed_documents (
+  id uuid primary key default gen_random_uuid(),
+  course_code text not null references public.courses(code) on delete cascade,
+  uploader_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null check (length(trim(title)) >= 2),
+  file_name text not null,
+  file_size bigint not null default 0 check (file_size >= 0),
+  mime_type text not null default 'application/octet-stream',
+  course_title text not null default '',
+  university_name text not null default '',
+  uploader_name text not null default '',
+  document_timestamp bigint not null default (extract(epoch from now()) * 1000)::bigint,
+  extracted_summary text not null default '',
+  key_topics text not null default '',
+  learning_objectives text not null default '',
+  study_tips text not null default '',
+  word_count integer not null default 0 check (word_count >= 0),
+  page_count integer not null default 0 check (page_count >= 0),
+  reading_time_minutes integer not null default 0 check (reading_time_minutes >= 0),
+  extraction_status text not null default 'PENDING'
+    check (extraction_status in ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+  category text not null default 'Notes'
+    check (category in ('Notes', 'Syllabus', 'Assignments', 'Exam Revision', 'Reference')),
+  tags text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists processed_documents_course_idx on public.processed_documents(course_code, document_timestamp desc);
+create index if not exists processed_documents_uploader_idx on public.processed_documents(uploader_id);
+alter table public.processed_documents enable row level security;
+
+drop policy if exists cc_processed_docs_read on public.processed_documents;
+create policy cc_processed_docs_read on public.processed_documents for select to authenticated
+  using (public.admin_of(uploader_id) or uploader_id = auth.uid()
+    or (public.is_active() and (public.enrolled_in(course_code) or public.teaches(course_code))));
+drop policy if exists cc_processed_docs_insert on public.processed_documents;
+create policy cc_processed_docs_insert on public.processed_documents for insert to authenticated
+  with check (uploader_id = auth.uid() and (public.admin_of(uploader_id)
+    or (public.is_lecturer() and public.teaches(course_code))));
+drop policy if exists cc_processed_docs_update on public.processed_documents;
+create policy cc_processed_docs_update on public.processed_documents for update to authenticated
+  using (public.admin_of(uploader_id) or uploader_id = auth.uid())
+  with check (public.admin_of(uploader_id) or uploader_id = auth.uid());
+drop policy if exists cc_processed_docs_delete on public.processed_documents;
+create policy cc_processed_docs_delete on public.processed_documents for delete to authenticated
+  using (public.admin_of(uploader_id) or uploader_id = auth.uid());
+
+grant select, insert, update, delete on public.processed_documents to authenticated;
+
+-- ===== 20261025000000_course_lecturers =====
+-- Assign the lecturers of ONE course (the campus administrator's "Assign lecturers" sheet).
+-- The older set_teaching_assignments() replaces everything one lecturer teaches; this replaces
+-- everyone who teaches one course. Both write the same table: teaching_assignments.
+-- Safe to run twice.
+
+create or replace function public.set_course_lecturers(p_course text, p_lecturers uuid[])
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_course  public.courses%rowtype;
+  v_ids     uuid[] := coalesce(array(select distinct x from unnest(coalesce(p_lecturers, '{}'::uuid[])) x), '{}');
+  v_current uuid[];
+  v_added   uuid[];
+  v_removed uuid[];
+  v_busy    text;
+begin
+  -- Only an administrator (with the second step done) of the campus that owns the course.
+  if not public.is_admin() then raise exception 'not_allowed' using errcode = '42501'; end if;
+
+  -- The app sends the short code (CS210); the stored code carries the campus prefix (CUOM:CS210).
+  -- Only this campus's courses are looked at, so another campus's course cannot be found by name.
+  select * into v_course from public.courses c
+   where c.university_id = public.my_university()
+     and (c.code = trim(p_course) or lower(c.short_code) = lower(trim(p_course)))
+   for update;
+  if not found then raise exception 'course_not_found' using errcode = 'P0001'; end if;
+
+  -- Everyone chosen must be an approved lecturer of this same campus. All or nothing.
+  if exists (
+    select 1 from unnest(v_ids) i
+    where not exists (
+      select 1 from public.profiles p
+      where p.id = i and p.role = 'lecturer' and p.status = 'approved'
+        and p.university_id = public.my_university())
+  ) then
+    raise exception 'not_a_lecturer' using errcode = 'P0001';
+  end if;
+
+  v_current := array(select lecturer_id from public.teaching_assignments where course_code = v_course.code);
+  v_added   := array(select x from unnest(v_ids) x where not (x = any (v_current)));
+  v_removed := array(select x from unnest(v_current) x where not (x = any (v_ids)));
+
+  -- Do not leave a live class without a lecturer who teaches it: the class has to be moved or
+  -- cancelled first. The names come back in the error detail so the app can say who.
+  select string_agg(distinct p.full_name, ', ') into v_busy
+  from public.class_sessions s
+  join public.profiles p on p.id = s.lecturer_id
+  where s.course_code = v_course.code and s.status <> 'cancelled' and s.lecturer_id = any (v_removed);
+  if v_busy is not null then
+    raise exception 'lecturer_has_classes' using errcode = 'P0001', detail = v_busy;
+  end if;
+
+  delete from public.teaching_assignments where course_code = v_course.code and lecturer_id = any (v_removed);
+  insert into public.teaching_assignments (lecturer_id, course_code)
+  select x, v_course.code from unnest(v_added) x
+  on conflict do nothing;
+
+  if cardinality(v_added) > 0 or cardinality(v_removed) > 0 then
+    perform public.log_audit('COURSE_LECTURERS_SET',
+      format('%s: +%s -%s', v_course.short_code, cardinality(v_added), cardinality(v_removed)));
+    if cardinality(v_added) > 0 then
+      perform public.notify_users(v_added, 'You now teach ' || v_course.short_code,
+        'The Academic Registry assigned you to ' || v_course.short_code || '. You can post notices and upload materials for it.',
+        'announcement', false);
+    end if;
+    if cardinality(v_removed) > 0 then
+      perform public.notify_users(v_removed, 'You no longer teach ' || v_course.short_code,
+        'The Academic Registry changed the lecturers of ' || v_course.short_code || '.',
+        'announcement', false);
+    end if;
+  end if;
+end $$;
+
+revoke all on function public.set_course_lecturers(text, uuid[]) from public, anon;
+grant execute on function public.set_course_lecturers(text, uuid[]) to authenticated;
+
+-- ===== 20261027000000_campus_details_maintenance =====
+-- Campus details and offline (maintenance) mode.
+-- Safe to run more than once (CI re-applies every migration to prove that).
+
+alter table public.universities add column if not exists location          text    not null default '';
+alter table public.universities add column if not exists contact_email     text    not null default '';
+alter table public.universities add column if not exists contact_phone     text    not null default '';
+alter table public.universities add column if not exists under_maintenance boolean not null default false;
+alter table public.universities add column if not exists maintenance_note  text    not null default '';
+
+-- The app manager puts one campus offline, or brings it back. Everyone at that campus is paused
+-- in the app until this is switched off again.
+create or replace function public.platform_set_maintenance(p_university uuid, p_on boolean, p_note text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_platform_admin() then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.universities
+     set under_maintenance = coalesce(p_on, false),
+         maintenance_note  = case when coalesce(p_on, false) then left(trim(coalesce(p_note, '')), 300) else '' end
+   where id = p_university and not is_platform;
+  if not found then raise exception 'unknown campus' using errcode = 'P0001'; end if;
+  perform public.log_audit(case when coalesce(p_on, false) then 'CAMPUS_OFFLINE' else 'CAMPUS_ONLINE' end,
+                           (select code from public.universities where id = p_university));
+end $$;
+
+-- The app manager can change everything about a campus; a campus administrator only the contact details
+-- of their own campus (name stays with the app manager).
+create or replace function public.update_campus_details(
+  p_university uuid, p_name text, p_location text, p_email text, p_phone text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_manager boolean := public.is_platform_admin();
+begin
+  if not v_manager and not public.campus_admin(p_university) then
+    raise exception 'not_allowed' using errcode = '42501';
+  end if;
+  update public.universities
+     set name          = case when v_manager and length(trim(coalesce(p_name, ''))) >= 2 then trim(p_name) else name end,
+         location      = left(trim(coalesce(p_location, '')), 120),
+         contact_email = left(trim(coalesce(p_email, '')), 120),
+         contact_phone = left(trim(coalesce(p_phone, '')), 40)
+   where id = p_university and not is_platform;
+  if not found then raise exception 'unknown campus' using errcode = 'P0001'; end if;
+  perform public.log_audit('CAMPUS_DETAILS_EDITED', (select code from public.universities where id = p_university));
+end $$;
+
+-- Lets the app ask "is my campus paused?" cheaply, even right after sign-in.
+create or replace function public.my_campus_paused()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select u.under_maintenance from public.universities u
+                    where u.id = public.my_university() and not public.is_platform_admin()), false);
+$$;
+
+grant execute on function
+  public.platform_set_maintenance(uuid, boolean, text),
+  public.update_campus_details(uuid, text, text, text, text),
+  public.my_campus_paused()
+  to authenticated;

@@ -74,6 +74,7 @@ import com.willykez.campconnect.ui.theme.AppThemeMode
 import com.willykez.campconnect.ui.theme.AppThemeSettings
 import com.willykez.campconnect.ui.theme.DangerRed
 import com.willykez.campconnect.ui.theme.DeepBlue
+import com.willykez.campconnect.ui.util.syncStatusText
 import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.WarmAmber
 import com.willykez.campconnect.ui.theme.WarmAmberLight
@@ -88,6 +89,7 @@ fun ProfileScreen(
   val user by viewModel.currentUser.collectAsState()
   val appLanguage by viewModel.appLanguage.collectAsState()
   val isOffline by viewModel.isOffline.collectAsState()
+  val lastSyncedAt by viewModel.lastSyncedAt.collectAsState()
   val is24Hour by viewModel.is24HourFormat.collectAsState()
   val devices by viewModel.myDevices.collectAsState()
   val deletionRequests by viewModel.deletionRequests.collectAsState()
@@ -305,28 +307,25 @@ fun ProfileScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Icon(imageVector = Icons.Default.CloudOff, contentDescription = "Offline", tint = WarmAmber)
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+              Icon(imageVector = Icons.Default.CloudOff, contentDescription = "Sync status", tint = if (isOffline) WarmAmber else DeepBlue)
               Spacer(modifier = Modifier.width(10.dp))
               Column {
                 Text(
-                  text = "Simulate Offline Mode",
+                  text = if (isOffline) viewModel.t("Offline: showing your last synced data", "Nje ya mtandao: unaona data ya mwisho") else viewModel.t("Online", "Mtandaoni"),
                   style = MaterialTheme.typography.titleSmall,
                   fontWeight = FontWeight.Bold
                 )
                 Text(
-                  text = if (isOffline) "Offline active (Loading from Room cache)" else "Online (Connected)",
+                  text = syncStatusText(isOffline, lastSyncedAt, System.currentTimeMillis(), appLanguage),
                   style = MaterialTheme.typography.bodySmall,
                   color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
               }
             }
-            Switch(
-              checked = isOffline,
-              onCheckedChange = { viewModel.toggleOfflineSimulation() },
-              colors = SwitchDefaults.colors(checkedThumbColor = WarmAmber),
-              modifier = Modifier.testTag("toggle_offline_switch")
-            )
+            OutlinedButton(onClick = { viewModel.triggerSync() }, modifier = Modifier.testTag("sync_now_btn")) {
+              Text(viewModel.t("Sync now", "Sawazisha"))
+            }
           }
         }
       }

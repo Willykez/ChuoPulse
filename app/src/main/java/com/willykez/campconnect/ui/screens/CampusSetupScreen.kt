@@ -50,6 +50,7 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
   val allCourses by viewModel.catalogCourses.collectAsState()
   val allRooms by viewModel.rooms.collectAsState()
   var open by remember { mutableStateOf<SetupKind?>(null) }
+  var assistantOpen by remember { mutableStateOf(false) }
   val accounts by viewModel.accounts.collectAsState()
   var assigningFor by remember { mutableStateOf<String?>(null) }
   var assigning by remember { mutableStateOf(false) }
@@ -73,6 +74,7 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
     }
+    item { TimetableAssistantCard(viewModel) { assistantOpen = true } }
     item {
       SetupCard(
         title = viewModel.t("Programmes", "Programu"),
@@ -146,6 +148,8 @@ fun CampusSetupTab(viewModel: CampusViewModel, modifier: Modifier = Modifier) {
     }
     item { Spacer(modifier = Modifier.height(24.dp)) }
   }
+
+  if (assistantOpen) TimetableAssistantScreen(viewModel) { assistantOpen = false }
 
   open?.let { kind ->
     SetupSheet(kind = kind, viewModel = viewModel, programmes = programmes, onDismiss = { open = null })

@@ -21,8 +21,20 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
+import com.willykez.campconnect.ui.theme.DangerRedLight
+import com.willykez.campconnect.data.docs.DocumentKind
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.UploadFile
@@ -52,6 +64,7 @@ import com.willykez.campconnect.ui.theme.DeepBlue
 import com.willykez.campconnect.ui.theme.SuccessGreen
 import com.willykez.campconnect.ui.theme.SuccessGreenLight
 import com.willykez.campconnect.ui.theme.WarmAmber
+import com.willykez.campconnect.ui.theme.WarmAmberDark
 import com.willykez.campconnect.ui.theme.WarmAmberLight
 import com.willykez.campconnect.viewmodel.CampusViewModel
 
@@ -66,15 +79,19 @@ fun SubmissionsScreen(
   val submissions by viewModel.submissions.collectAsState()
   val activeCourseFilter by viewModel.submissionFilterCourse.collectAsState()
 
-  val courses = listOf("ALL", "CS210", "IS202", "CS215")
-
-  val filteredSubmissions = submissions.filter { sub ->
-    when {
-      activeCourseFilter != "ALL" && sub.courseCode != activeCourseFilter -> false
-      user.role == Role.STUDENT && sub.studentId != user.id -> false
+  var statusFilter by remember { mutableStateOf("ALL") }
+  val visible = submissions.filter { user.role != Role.STUDENT || it.studentId == user.id }
+  val courses = listOf("ALL") + visible.map { it.courseCode }.distinct().sorted()
+  val inCourse = visible.filter { activeCourseFilter == "ALL" || it.courseCode == activeCourseFilter }
+  val filteredSubmissions = inCourse.filter { sub ->
+    when (statusFilter) {
+      "REVIEW" -> sub.grade.isNullOrBlank()
+      "GRADED" -> !sub.grade.isNullOrBlank()
+      "LATE" -> sub.isLate
       else -> true
     }
   }
+  val waitingLabel = if (user.role == Role.STUDENT) "Awaiting grade" else "To review"
 
   Column(
     modifier = modifier
@@ -104,34 +121,30 @@ fun SubmissionsScreen(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    LazyRow(
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      items(courses) { course ->
-        val isSelected = activeCourseFilter == course
-        Surface(
-          shape = RoundedCornerShape(16.dp),
-          color = if (isSelected) DeepBlue else MaterialTheme.colorScheme.surface,
-          border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = if (isSelected) DeepBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-          ),
-          modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { viewModel.setSubmissionFilterCourse(course) }
-            .testTag("submission_filter_$course")
-        ) {
-          Text(
-            text = if (course == "ALL") "All Courses" else course,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-          )
-        }
-      }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      StatTile("Total", inCourse.size.toString(), DeepBlue, Modifier.weight(1f))
+      StatTile(waitingLabel, inCourse.count { it.grade.isNullOrBlank() }.toString(), WarmAmberDark, Modifier.weight(1f))
+      StatTile("Graded", inCourse.count { !it.grade.isNullOrBlank() }.toString(), SuccessGreen, Modifier.weight(1f))
+      StatTile("Late", inCourse.count { it.isLate }.toString(), DangerRed, Modifier.weight(1f))
     }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    ChipRow(
+      options = courses.map { it to (if (it == "ALL") "All Courses" else it) },
+      selected = activeCourseFilter,
+      tagPrefix = "submission_filter",
+      onSelect = { viewModel.setSubmissionFilterCourse(it) }
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    ChipRow(
+      options = listOf("ALL" to "All", "REVIEW" to waitingLabel, "GRADED" to "Graded", "LATE" to "Late"),
+      selected = statusFilter,
+      tagPrefix = "submission_status",
+      onSelect = { statusFilter = it }
+    )
 
     Spacer(modifier = Modifier.height(14.dp))
 
@@ -183,6 +196,60 @@ fun SubmissionsScreen(
         }
       }
     }
+  }
+}
+
+@Composable
+private fun StatTile(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+  Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = 0.10f), modifier = modifier) {
+    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+      Text(text = value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = color)
+      Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+  }
+}
+
+@Composable
+private fun ChipRow(options: List<Pair<String, String>>, selected: String, tagPrefix: String, onSelect: (String) -> Unit) {
+  LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+    items(options) { (value, label) ->
+      val isSelected = selected == value
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) DeepBlue else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+          width = 1.dp,
+          color = if (isSelected) DeepBlue else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        ),
+        modifier = Modifier
+          .clip(RoundedCornerShape(16.dp))
+          .clickable { onSelect(value) }
+          .testTag("${tagPrefix}_$value")
+      ) {
+        Text(
+          text = label,
+          style = MaterialTheme.typography.labelSmall,
+          fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+          color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+      }
+    }
+  }
+}
+
+private data class FileStyle(val icon: ImageVector, val color: Color, val label: String)
+
+private fun fileStyle(file: AttachmentFile): FileStyle {
+  val kind = if (file.isImage) DocumentKind.IMAGE else DocumentKind.of(file.fileName, file.mimeType)
+  return when (kind) {
+    DocumentKind.PDF -> FileStyle(Icons.Default.PictureAsPdf, Color(0xFFDC2626), kind.label)
+    DocumentKind.WORD -> FileStyle(Icons.Default.Description, Color(0xFF2563EB), kind.label)
+    DocumentKind.SHEET -> FileStyle(Icons.Default.TableChart, Color(0xFF16A34A), kind.label)
+    DocumentKind.SLIDES -> FileStyle(Icons.Default.Slideshow, Color(0xFFEA580C), kind.label)
+    DocumentKind.IMAGE -> FileStyle(Icons.Default.Photo, Color(0xFF7C3AED), kind.label)
+    DocumentKind.ARCHIVE -> FileStyle(Icons.Default.FolderZip, Color(0xFF64748B), kind.label)
+    else -> FileStyle(Icons.Default.InsertDriveFile, Color(0xFF64748B), kind.label)
   }
 }
 
@@ -240,18 +307,23 @@ fun SubmissionCard(
           )
         }
 
-        if (isGraded) {
-          StatusBadge(
-            text = "Grade: ${submission.grade}",
-            backgroundColor = SuccessGreenLight,
-            contentColor = SuccessGreen
-          )
-        } else {
-          StatusBadge(
-            text = "Pending Review",
-            backgroundColor = WarmAmberLight,
-            contentColor = Color(0xFFB45309)
-          )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          if (submission.isLate) {
+            StatusBadge(text = "Late", backgroundColor = DangerRedLight, contentColor = DangerRed)
+          }
+          if (isGraded) {
+            StatusBadge(
+              text = "Grade: ${submission.grade}",
+              backgroundColor = SuccessGreenLight,
+              contentColor = SuccessGreen
+            )
+          } else {
+            StatusBadge(
+              text = "Pending Review",
+              backgroundColor = WarmAmberLight,
+              contentColor = Color(0xFFB45309)
+            )
+          }
         }
       }
 
@@ -294,21 +366,24 @@ fun SubmissionCard(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Icon(
-              imageVector = if (submission.attachment.isImage) Icons.Default.Assignment else Icons.Default.PictureAsPdf,
-              contentDescription = "File",
-              tint = DeepBlue,
-              modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
+            val style = fileStyle(submission.attachment)
+            Box(
+              modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(style.color.copy(alpha = 0.12f)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(imageVector = style.icon, contentDescription = style.label, tint = style.color, modifier = Modifier.size(22.dp))
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
               Text(
                 text = submission.attachment.fileName,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
               )
               Text(
-                text = submission.attachment.fileSize,
+                text = listOf(style.label, submission.attachment.fileSize).filter { it.isNotBlank() }.joinToString(" • "),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
               )
@@ -316,7 +391,7 @@ fun SubmissionCard(
           }
 
           ActionButton(
-            label = "View",
+            label = "Open",
             icon = Icons.Default.Visibility,
             onClick = onPreviewFile,
             filled = true,

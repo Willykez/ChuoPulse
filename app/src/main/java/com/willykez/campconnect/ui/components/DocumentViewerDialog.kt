@@ -259,8 +259,8 @@ fun DocumentViewerDialog(
                 )
                 kind == DocumentKind.IMAGE -> ImagePage(uri = uri, name = attachment.fileName)
                 isPdf(attachment) -> PdfPages(uri = uri, onPageLabel = { pageLabel = it })
-                kind == DocumentKind.WORD || kind == DocumentKind.SLIDES ||
-                  kind == DocumentKind.SHEET || kind == DocumentKind.TEXT -> ExtractedPages(
+                kind == DocumentKind.WORD || kind == DocumentKind.SLIDES || kind == DocumentKind.SHEET ||
+                  kind == DocumentKind.TEXT || (kind == DocumentKind.ARCHIVE && isStructuredOffice(attachment.fileName)) -> OfficePages(
                   attachment = attachment,
                   kind = kind,
                   onPageLabel = { pageLabel = it },
@@ -625,7 +625,7 @@ private fun ZoomBox(
 }
 
 @Composable
-private fun LoadingIndicator() {
+internal fun LoadingIndicator() {
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     CircularProgressIndicator(color = DeepBlue)
   }
@@ -728,7 +728,7 @@ private sealed interface TextLoad {
 }
 
 @Composable
-private fun ExtractedPages(
+internal fun ExtractedPages(
   attachment: AttachmentFile,
   kind: DocumentKind,
   onPageLabel: (String?) -> Unit,
@@ -745,7 +745,7 @@ private fun ExtractedPages(
         val input = context.contentResolver.openInputStream(Uri.parse(attachment.uriString))
           ?: throw IOException("cannot open")
         input.use { src -> file.outputStream().use { dst -> src.copyTo(dst) } }
-        TextLoad.Ready(DocumentTextExtractor.extract(file, attachment.fileName, attachment.mimeType))
+        TextLoad.Ready(DocumentTextExtractor.extract(file, attachment.fileName, attachment.mimeType, minChars = 1))
       } catch (e: ExtractionException) {
         TextLoad.Failed(e.message ?: "This file could not be shown here.")
       } catch (e: Exception) {

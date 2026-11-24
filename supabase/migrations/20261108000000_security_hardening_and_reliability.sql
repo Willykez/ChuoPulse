@@ -20,7 +20,6 @@
 --  RELIABILITY
 --   R1  platform_wipe_campus() failed with a foreign-key error whenever a student had a programme.
 --   R2  Files of deleted rows / wiped campuses were orphaned in Storage. Now queued and swept.
---   R3  Quiz auto-submit housekeeping scanned and locked every attempt on every answer save.
 --   R4  Publishing a draft announcement notified nobody.
 --   R5  Removing a course from a programme left its students enrolled.
 --   R6  Missing indexes on the hottest lookups; AI quota counted in UTC and charged failed calls.
@@ -71,9 +70,6 @@ create index if not exists submissions_deadline_idx      on public.submissions (
 create index if not exists deadline_done_student_idx     on public.deadline_done (student_id);
 create index if not exists notifications_unread_idx      on public.notifications (user_id) where not is_read;
 create index if not exists audit_university_idx          on public.audit_log (university_id, at desc);
-create index if not exists quiz_attempts_open_idx        on public.quiz_attempts (deadline_at) where status = 'in_progress';
-create index if not exists quizzes_creator_idx           on public.quizzes (created_by);
-create index if not exists quiz_answers_question_idx     on public.quiz_answers (question_id);
 
 -- ---------- 3. Patched functions (each is the previous definition plus the fix named above) ----
 create or replace function public.protect_profile_columns()
@@ -728,8 +724,6 @@ begin
     'notifications', coalesce((select jsonb_agg(to_jsonb(n)) from public.notifications n where n.user_id = uid), '[]'),
     'deadline_ticks', coalesce((select jsonb_agg(deadline_id) from public.deadline_done where student_id = uid), '[]'),
     'announcements_opened', (select count(*) from public.announcement_reads where user_id = uid),
-    'quiz_attempts', coalesce((select jsonb_agg(jsonb_build_object('quiz_id', a.quiz_id, 'started_at', a.started_at,
-                                'status', a.status, 'marked', a.marked)) from public.quiz_attempts a where a.student_id = uid), '[]'),
     'submissions', coalesce((select jsonb_agg(to_jsonb(s) - 'storage_path') from public.submissions s where s.student_id = uid), '[]'),
     'devices', coalesce((select jsonb_agg(jsonb_build_object('label', label, 'last_seen_at', last_seen_at)) from public.devices where user_id = uid), '[]'));
 end $$;
@@ -906,22 +900,6 @@ begin
   on conflict (bucket, path) do nothing;
   get diagnostics v = row_count;
   return v;
-end $$;
-
--- ---------- 7. Quiz housekeeping that scales (R3) -------------------------------------------------
--- Same result as before, but it only touches attempts that really expired (partial index) and never
--- waits for rows another request is already finalising.
-create or replace function public.finalize_expired_quiz_attempts()
-returns integer language plpgsql security definer set search_path = public as $$
-declare v_count integer;
-begin
-  update public.quiz_attempts a
-     set status = 'auto_submitted', submitted_at = a.deadline_at
-   where a.id in (select x.id from public.quiz_attempts x
-                   where x.status = 'in_progress' and x.deadline_at + interval '10 seconds' <= now()   -- the 10 s are the hand-in grace
-                   for update skip locked);
-  get diagnostics v_count = row_count;
-  return v_count;
 end $$;
 
 -- ---------- 8. Courses removed from a programme take their students with them (R5) -----------------
@@ -1105,10 +1083,6 @@ begin
   return query select 'files waiting to be removed from storage', case when m > 0 then 'warn' else 'ok' end,
     n || ' queued, ' || m || ' failed 8 times (see last_error)';
 
-  select count(*) into n from public.quiz_attempts where status = 'in_progress' and deadline_at + interval '1 minute' < now();
-  return query select 'quiz attempts past their time but not closed', case when n = 0 then 'ok' else 'warn' end,
-    n || ' (they close on the next answer/submit, or schedule finalize_expired_quiz_attempts)';
-
   select count(*) into n from public.universities where under_maintenance and not is_platform;
   return query select 'campuses paused', case when n = 0 then 'ok' else 'info' end, n || ' paused';
 
@@ -1123,7 +1097,6 @@ end $$;
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
-    perform cron.schedule('cc-finalize-quizzes',   '* * * * *',  $c$select public.finalize_expired_quiz_attempts()$c$);
     perform cron.schedule('cc-prune-notifications', '17 3 * * *', $c$select public.prune_notifications(90)$c$);
     perform cron.schedule('cc-enqueue-orphans',     '43 3 * * *', $c$select public.storage_enqueue_orphans('24 hours')$c$);
   end if;

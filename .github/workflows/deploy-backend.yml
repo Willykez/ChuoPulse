@@ -53,4 +53,5 @@ jobs:
           supabase functions deploy campus-wipe-files
           supabase functions deploy ai-analyze
           supabase functions deploy storage-cleanup
+          supabase functions deploy ai-timetable
           supabase functions deploy confirm-signup --no-verify-jwt

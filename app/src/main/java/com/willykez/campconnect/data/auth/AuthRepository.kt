@@ -1,8 +1,10 @@
 package com.willykez.campconnect.data.auth
 
 import com.willykez.campconnect.data.model.University
+import org.json.JSONArray
 import org.json.JSONObject
 import com.willykez.campconnect.data.supabase.SupabaseClient
+import com.willykez.campconnect.data.repository.SyncCache
 import com.willykez.campconnect.data.supabase.Backend
 import com.willykez.campconnect.data.model.AccountStatus
 import com.willykez.campconnect.data.model.Role
@@ -130,15 +132,23 @@ class AuthRepository(
   private fun JSONObject.text(key: String): String? =
     if (isNull(key)) null else optString(key).trim().ifBlank { null }
 
+  private suspend fun directory(table: String, qs: String): JSONArray? {
+    val cache = Backend.appContext?.let { SyncCache(it, SyncCache.DIRECTORY) }
+    val key = "$table?$qs"
+    val live = runCatching { Backend.client.select(table, qs, "") }.getOrNull()
+    if (live != null && live.isSuccessful) {
+      val rows = runCatching { live.jsonArray() }.getOrNull()
+      if (rows != null) { cache?.put(key, rows); return rows }
+    }
+    return cache?.get(key)
+  }
+
   suspend fun loadDirectory(): Boolean {
     return try {
-      val u = Backend.client.select(
+      val rows = directory(
         "universities",
-        "select=id,code,name,location,contact_email,contact_phone,under_maintenance,maintenance_note,is_platform&order=name",
-        ""
-      )
-      if (!u.isSuccessful) return false
-      val rows = u.jsonArray()
+        "select=id,code,name,location,contact_email,contact_phone,under_maintenance,maintenance_note,is_platform&order=name"
+      ) ?: return false
       val ids = mutableMapOf<String, String>()
       val list = mutableListOf<University>()
       for (i in 0 until rows.length()) {
@@ -161,9 +171,8 @@ class AuthRepository(
       uniAppIdByUuid = ids
       catalog.replaceUniversities(list)
 
-      val p = Backend.client.select("programmes", "select=id,name,university_id&order=name", "")
-      if (p.isSuccessful) {
-        val prow = p.jsonArray()
+      val prow = directory("programmes", "select=id,name,university_id&order=name")
+      if (prow != null) {
         val byUni = mutableMapOf<String, MutableMap<String, Set<String>>>()
         val names = mutableMapOf<String, String>()
         for (i in 0 until prow.length()) {

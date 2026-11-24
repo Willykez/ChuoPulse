@@ -7,11 +7,12 @@ course materials, deadlines, quizzes and submissions. The backend is Supabase.
 
 ```
 app/                         Android application
-supabase/migrations/         Schema, row-level security, limits, audit, hardening (latest: 20261108)
-supabase/functions/          Edge Functions: admin-create-user, admin-manage-user, ai-analyze,
-                             campus-wipe-files, confirm-signup, storage-cleanup
+supabase/migrations/         5 files: core_schema, accounts_and_roles, admin_tools, security_hardening, remove_quizzes
+supabase/functions/          Edge Functions: admin-create-user, admin-manage-user, ai-analyze, ai-timetable,
+                             campus-wipe-files, confirm-signup, storage-cleanup (+ _shared)
 supabase/diagnostics.sql     Read-only health and security audit (run it after every deploy)
 supabase/tests/              Database and Edge Function tests (run_all.sh, edge/run.ts)
+tests/jvm/                   Logic tests for offline cache, document reader and timetable assistant (run.sh)
 .github/workflows/           Build, backend deploy, signed release
 .env.example                 Build settings template
 ```
@@ -31,7 +32,34 @@ Run the **Deploy backend** workflow (or `supabase db push` and `supabase functio
 * Dashboard: Authentication -> Providers -> Email -> **Confirm email OFF** (people wait for an administrator to approve them).
 * Set the secret `CLEANUP_SECRET` and schedule the `storage-cleanup` function every 15 minutes
   (header `x-cleanup-secret`). It removes files of deleted rows and wiped campuses.
-* Enable the `pg_cron` extension to auto-close quiz attempts and prune old notifications.
+* Enable the `pg_cron` extension to prune old notifications and queue unused files.
+
+## Features worth knowing
+
+* **Offline:** every sync is cached on the phone. Without a connection the app shows the last synced timetable,
+  announcements and deadlines, with the sync time on the Profile screen. Changes need a connection. Signing out clears the cache.
+* **AI timetable assistant** (campus administrators, Campus setup): upload a timetable or course list (PDF, Word, Excel, CSV,
+  photo). The `ai-timetable` function proposes programmes, courses, lecturer assignments and weekly sessions; the administrator
+  ticks, edits or removes each item, clashes with the existing timetable are flagged, and only approved items are added.
+  It uses the same AI key and daily allowance as document analysis.
+* **Document viewer:** PDF pages, images, Word (`.docx`, `.odt`) with headings, lists and tables, spreadsheets
+  (`.xlsx`, `.ods`, `.csv`, `.tsv`) as a grid with sheet tabs, zip listings, slides and text. Legacy `.doc`, `.xls`, `.ppt` show
+  the text that can be recovered and offer "open in another app".
+* **Submissions:** filters by course and status, summary counts, typed file icons and a Late marker.
+
+## Existing project (migrations were merged from 15 files into 4)
+
+Your database already has the 15 old migration names in its history. Tell the CLI the 11 removed ones are gone
+(this only edits the history table, it runs no SQL), then push:
+
+```
+supabase migration repair --status reverted 20261024000000 20261025000000 20261026000000 20261027000000 20261031000000 20261101000000 20261102000000 20261103000000 20261105000000 20261106000000 20261107000000
+supabase db push
+```
+
+`20261021000000`, `20261030000000` and `20261104000000` keep their numbers, so they stay recorded as applied.
+A brand-new project needs nothing special: `supabase db push` applies all five in order.
+`20261109000000_remove_quizzes.sql` deletes the old quiz tables and their data on an existing project.
 
 ## App manager
 

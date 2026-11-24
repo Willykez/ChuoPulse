@@ -17,7 +17,7 @@ for f in "$MIG"/*.sql; do $P -f "$f" || { echo "RE-RUN FAILED (not idempotent): 
 echo "all migrations applied a second time (idempotent)"
 $P -f "$SQL/fixture.sql" >/dev/null && $P -f "$SQL/test_helpers.sql" || exit 1
 rc=0
-for t in regress_core regress_new misc_test; do
+for t in regress_core regress_new misc_test apply_timetable; do
   out=$($PSQL -d $DB -f "$SQL/$t.sql" 2>&1 | grep -E 'passed|^   |ERROR')
   echo "$t:$out"; echo "$out" | grep -q ' 0 failed' || rc=1
 done

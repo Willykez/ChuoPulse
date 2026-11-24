@@ -1,3 +1,7 @@
+-- Admin tools: people management, AI settings, messaging, programme courses, auto-confirm of pending accounts
+-- Merged, in order, from: 20261104000000_admin_people_and_ai.sql, 20261105000000_admin_messaging.sql, 20261106000000_programme_courses.sql, 20261107000000_auto_confirm_pending.sql
+
+-- ===== 20261104000000_admin_people_and_ai =====
 -- =====================================================================================
 -- ChuoPulse: people management for administrators + the AI settings (server side only)
 -- Run once in the SQL editor (or `supabase db push`). Safe to run again.
@@ -283,3 +287,138 @@ begin
 end $$;
 revoke all on function public.ai_take_use(uuid, int) from public, anon, authenticated;
 grant execute on function public.ai_take_use(uuid, int) to service_role;
+
+-- ===== 20261105000000_admin_messaging =====
+-- =====================================================================================
+-- ChuoPulse: messages from the app manager to a campus's administrators, and from a campus
+-- administrator to the people of their campus. Safe to run again.
+-- =====================================================================================
+
+-- App manager -> the administrators of ONE campus
+create or replace function public.platform_notify_campus_admins(
+  p_university uuid, p_title text, p_message text, p_urgent boolean default false)
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_ids uuid[];
+begin
+  if not public.is_platform_admin() then raise exception 'not_allowed' using errcode = '42501'; end if;
+  if length(trim(coalesce(p_title, ''))) < 2 or length(trim(coalesce(p_message, ''))) < 2 then
+    raise exception 'invalid_message' using errcode = 'P0001';
+  end if;
+  select array_agg(id) into v_ids from public.profiles
+   where university_id = p_university and role = 'admin' and status = 'approved' and not is_platform_admin;
+  if v_ids is null then return 0; end if;
+  perform public.notify_users(v_ids, left(trim(p_title), 120), left(trim(p_message), 1000), 'announcement', coalesce(p_urgent, false));
+  perform public.log_audit('PLATFORM_MESSAGE', left(trim(p_title), 120));
+  return array_length(v_ids, 1);
+end $$;
+revoke all on function public.platform_notify_campus_admins(uuid, text, text, boolean) from public, anon;
+grant execute on function public.platform_notify_campus_admins(uuid, text, text, boolean) to authenticated;
+
+-- Campus administrator -> people of the own campus.
+-- p_audience: 'all' | 'students' | 'lecturers' | 'reps' | 'programme' (needs p_programme)
+create or replace function public.admin_notify_people(
+  p_audience text, p_programme uuid, p_title text, p_message text, p_urgent boolean default false)
+returns integer language plpgsql security definer set search_path = public as $$
+declare v_ids uuid[]; v_uni uuid := public.my_university();
+begin
+  if not public.is_admin() or public.is_platform_admin() then raise exception 'not_allowed' using errcode = '42501'; end if;
+  if length(trim(coalesce(p_title, ''))) < 2 or length(trim(coalesce(p_message, ''))) < 2 then
+    raise exception 'invalid_message' using errcode = 'P0001';
+  end if;
+  if p_audience = 'programme' and (p_programme is null or not exists (
+       select 1 from public.programmes where id = p_programme and university_id = v_uni)) then
+    raise exception 'unknown_programme' using errcode = 'P0001';
+  end if;
+  select array_agg(p.id) into v_ids from public.profiles p
+   where p.university_id = v_uni and p.status = 'approved' and not p.is_platform_admin and p.id <> auth.uid()
+     and case p_audience
+           when 'all'       then true
+           when 'students'  then p.role = 'student'
+           when 'lecturers' then p.role = 'lecturer'
+           when 'reps'      then p.role = 'student' and p.is_class_rep
+           when 'programme' then p.role = 'student' and p.programme_id = p_programme
+           else false end;
+  if v_ids is null then return 0; end if;
+  perform public.notify_users(v_ids, left(trim(p_title), 120), left(trim(p_message), 1000), 'announcement', coalesce(p_urgent, false));
+  perform public.log_audit('ADMIN_MESSAGE', left(trim(p_title), 120) || ' -> ' || p_audience);
+  return array_length(v_ids, 1);
+end $$;
+revoke all on function public.admin_notify_people(text, uuid, text, text, boolean) from public, anon;
+grant execute on function public.admin_notify_people(text, uuid, text, text, boolean) to authenticated;
+
+-- ===== 20261106000000_programme_courses =====
+-- =====================================================================================
+-- ChuoPulse: put courses into a programme by hand (after courses were imported with no programme).
+-- Makes the given courses EXACTLY the courses of the programme. Students of the programme are
+-- enrolled in the added courses (existing trigger) and removed from the dropped ones.
+-- Safe to run again.
+-- =====================================================================================
+create or replace function public.set_programme_courses(p_programme_name text, p_codes text[])
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_uni uuid := public.my_university();
+  v_prog uuid;
+  v_keep text[];
+  v_added int := 0;
+  v_removed int := 0;
+begin
+  if not public.campus_admin(v_uni) then raise exception 'not_allowed' using errcode = '42501'; end if;
+
+  select id into v_prog from public.programmes
+   where university_id = v_uni and lower(name) = lower(trim(coalesce(p_programme_name, '')));
+  if v_prog is null then raise exception 'unknown_programme' using errcode = 'P0001'; end if;
+
+  -- The app sends short codes (CS101); the database keys are 'CUOM:CS101'. Only this campus's courses count.
+  select coalesce(array_agg(c.code), '{}') into v_keep
+    from public.courses c
+   where c.university_id = v_uni
+     and upper(c.short_code) in (select upper(trim(x)) from unnest(coalesce(p_codes, '{}')) as x);
+
+  with gone as (
+    delete from public.programme_courses
+     where programme_id = v_prog and course_code <> all (v_keep)
+    returning course_code
+  ), un as (
+    delete from public.enrollments e
+     using gone g, public.profiles p
+     where e.course_code = g.course_code and e.student_id = p.id
+       and p.programme_id = v_prog and p.role = 'student'
+    returning 1
+  )
+  select count(*) into v_removed from gone;
+
+  with ins as (
+    insert into public.programme_courses (programme_id, course_code)
+    select v_prog, k from unnest(v_keep) as k
+    on conflict do nothing
+    returning 1
+  )
+  select count(*) into v_added from ins;
+
+  perform public.log_audit('PROGRAMME_COURSES', format('%s: +%s -%s', trim(p_programme_name), v_added, v_removed));
+  return jsonb_build_object('added', v_added, 'removed', v_removed);
+end $$;
+revoke all on function public.set_programme_courses(text, text[]) from public, anon;
+grant execute on function public.set_programme_courses(text, text[]) to authenticated;
+
+-- ===== 20261107000000_auto_confirm_pending =====
+-- =====================================================================================
+-- No more emailed sign-up codes. A person who registers is created as PENDING and an administrator
+-- approves them. This lets the app finish a sign-up even if "Confirm email" is still ON in the
+-- Supabase dashboard (turning it OFF is still recommended). Safe to run again.
+--
+-- Only the Edge Function `confirm-signup` (service role) can call this. It only ever returns an
+-- account that is unconfirmed AND still waiting for approval, never an approved or paused one.
+-- =====================================================================================
+create or replace function public.pending_unconfirmed_user(p_email text)
+returns uuid language sql stable security definer set search_path = public, auth as $$
+  select u.id
+    from auth.users u
+    join public.profiles p on p.id = u.id
+   where lower(u.email) = lower(trim(p_email))
+     and u.email_confirmed_at is null
+     and p.status = 'pending'
+   limit 1;
+$$;
+revoke all on function public.pending_unconfirmed_user(text) from public, anon, authenticated;
+grant execute on function public.pending_unconfirmed_user(text) to service_role;

@@ -36,7 +36,7 @@ object DocumentTextExtractor {
   private const val MIN_CHARS = 40
   private const val IMAGE_MAX_SIDE = 2400
 
-  suspend fun extract(file: File, fileName: String, mimeType: String?): ExtractedDocument =
+  suspend fun extract(file: File, fileName: String, mimeType: String?, minChars: Int = MIN_CHARS): ExtractedDocument =
     withContext(Dispatchers.IO) {
       val ext = DocumentKind.extensionOf(fileName)
       val kind = DocumentKind.of(fileName, mimeType)
@@ -59,7 +59,7 @@ object DocumentTextExtractor {
         )
       }
       val cleaned = raw.sections.map(::tidy).filter { it.isNotBlank() }
-      if (cleaned.sumOf { it.length } < MIN_CHARS) {
+      if (cleaned.sumOf { it.length } < minChars) {
         throw ExtractionException(
           if (kind == DocumentKind.IMAGE || kind == DocumentKind.PDF)
             "No readable text was found. Use a clear, well-lit picture or a sharper scan of printed text."

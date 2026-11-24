@@ -101,7 +101,6 @@ import com.willykez.campconnect.ui.screens.DeadlinesScreen
 import com.willykez.campconnect.ui.screens.HomeScreen
 import com.willykez.campconnect.ui.screens.MaterialsScreen
 import com.willykez.campconnect.ui.screens.ProcessedDocumentsScreen
-import com.willykez.campconnect.ui.screens.QuizzesScreen
 import com.willykez.campconnect.ui.screens.NotificationsScreen
 import com.willykez.campconnect.ui.screens.ProfileScreen
 import com.willykez.campconnect.ui.screens.SubmissionsScreen
@@ -411,7 +410,7 @@ fun CampusMainApp(viewModel: CampusViewModel) {
           )
 
           NavigationBarItem(
-            selected = currentTab == ScreenTab.CALENDAR || currentTab == ScreenTab.QUIZZES,
+            selected = currentTab == ScreenTab.CALENDAR,
             onClick = { viewModel.setTab(ScreenTab.CALENDAR) },
             icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Deadlines") },
             label = { Text(viewModel.getString("tab_calendar")) },
@@ -485,7 +484,6 @@ fun CampusMainApp(viewModel: CampusViewModel) {
             }
           )
 
-          ScreenTab.QUIZZES -> QuizzesScreen(viewModel = viewModel)
 
           ScreenTab.SUBMISSIONS -> SubmissionsScreen(
             viewModel = viewModel,

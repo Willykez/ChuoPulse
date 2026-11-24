@@ -1,5 +1,6 @@
 // Run:  deno run --allow-all --import-map=import_map.json run.ts
 import { calls } from './supabase_stub.ts'
+import { normaliseTimetable, parseDay, parseTime, normaliseCode } from '../../functions/_shared/timetable.ts'
 // deno-lint-ignore no-explicit-any
 const g = globalThis as any
 Deno.env.set('SUPABASE_URL', 'http://x'); Deno.env.set('SUPABASE_ANON_KEY', 'anon-key'); Deno.env.set('SUPABASE_SERVICE_ROLE_KEY', 'service-key')
@@ -8,7 +9,7 @@ const handlers: Record<string, (r: Request) => Promise<Response> | Response> = {
 let current = ''
 // deno-lint-ignore no-explicit-any
 ;(Deno as any).serve = (h: any) => { handlers[current] = h }
-for (const f of ['confirm-signup', 'admin-manage-user', 'campus-wipe-files', 'storage-cleanup', 'ai-analyze']) {
+for (const f of ['confirm-signup', 'admin-manage-user', 'campus-wipe-files', 'storage-cleanup', 'ai-analyze', 'ai-timetable']) {
   current = f; await import(`../../functions/${f}/index.ts`)
 }
 let pass = 0, fail = 0
@@ -129,6 +130,75 @@ aiBase(); r = await run('ai-analyze', req({ text: TEXT }, { ...AUTH, 'content-le
 check('ai: oversized body -> 413', r.status === 413)
 aiBase(); r = await run('ai-analyze', req({ text: 'too short' }, AUTH))
 check('ai: short text -> 400', r.status === 400)
+globalThis.fetch = realFetch
+
+
+// ---------------- timetable normaliser
+check('time: plain / padded / am-pm / dotted / h-form', parseTime('8') === '08:00' && parseTime('8:30') === '08:30' && parseTime('2pm') === '14:00' && parseTime('2:15 PM') === '14:15' && parseTime('8.30') === '08:30' && parseTime('14h00') === '14:00' && parseTime('12am') === '00:00' && parseTime('12pm') === '12:00')
+check('time: nonsense rejected', parseTime('25:00') === null && parseTime('9:75') === null && parseTime('abc') === null && parseTime('') === null && parseTime('13pm') === null && parseTime(null) === null)
+check('day: English, Swahili, numbers; Sunday and 0/7 rejected', parseDay('Mon') === 1 && parseDay('Tuesday') === 2 && parseDay('Jumatano') === 3 && parseDay('alhamisi') === 4 && parseDay('Ijumaa') === 5 && parseDay('Sat.') === 6 && parseDay(3) === 3 && parseDay('4') === 4 && parseDay('Sunday') === null && parseDay(0) === null && parseDay(7) === null && parseDay('Jumapili') === null)
+check('course code is tidied', normaliseCode(' cs 210 ') === 'CS210')
+const messy = {
+  programmes: [{ name: 'BSc Computer Science' }, 'bsc computer science', { name: '' }, null],
+  courses: [{ code: 'cs 210', title: 'Databases', programme: 'BSc Computer Science' }, { code: 'CS210', title: 'dup' }, { code: '!!', title: 'bad' }, { code: 'is202', title: '', programme: 'BSc IT' }],
+  assignments: [{ course: 'cs210', lecturer: ' Dr. John  Mwita ' }, { course: 'CS210', lecturer: 'dr. john mwita' }, { course: 'CS210', lecturer: '' }],
+  sessions: [
+    { course: 'cs210', lecturer: 'Dr. John Mwita', day: 'Monday', start: '8', end: '10am', venue: ' LH1 ', kind: 'LAB' },
+    { course: 'CS210', day: 'Mon', start: '08:00', end: '10:00', venue: 'lh1' },
+    { course: 'CS210', day: 'Sunday', start: '08:00', end: '10:00', venue: 'LH1' },
+    { course: 'CS210', day: 'Tue', start: '10:00', end: '09:00', venue: 'LH2' },
+    { course: 'CS210', day: 'Tue', start: '09:00', end: '11:00', venue: '' },
+    { course: 'IS202', day: 3, start: '14h00', end: '16:00', venue: 'Lab 2', kind: 'party' },
+    { course: 'XX999', day: 'Fri', start: '09:00', end: '10:00', venue: 'LH3' },
+    { day: 'Fri' },
+  ],
+  rooms: ['LH1', 'Hall A', ''],
+  warnings: ['The document is hard to read.'],
+}
+const n = normaliseTimetable(messy, { courses: [] })
+check('normaliser: programmes de-duplicated, auto-added from courses', n.programmes.map((p) => p.name).join('|') === 'BSc Computer Science|BSc IT')
+check('normaliser: courses cleaned, duplicates and bad codes dropped, title defaults to code', n.courses.length === 2 && n.courses[0].code === 'CS210' && n.courses[1].title === 'IS202')
+check('normaliser: assignments de-duplicated case-insensitively, blank lecturer dropped', n.assignments.length === 1 && n.assignments[0].lecturer === 'Dr. John Mwita')
+check('normaliser: first session coerced (8 -> 08:00, 10am -> 10:00, trimmed venue, lab)', JSON.stringify(n.sessions[0]) === JSON.stringify({ course: 'CS210', lecturer: 'Dr. John Mwita', day: 1, start: '08:00', end: '10:00', venue: 'LH1', kind: 'lab' }))
+check('normaliser: duplicate slot, Sunday, reversed time and missing venue are dropped', n.sessions.length === 3 && n.sessions.every((s) => s.start < s.end))
+check('normaliser: unknown kind becomes lecture; 14h00 understood', n.sessions[1].kind === 'lecture' && n.sessions[1].start === '14:00')
+check('normaliser: every dropped row explains itself', n.warnings.some((w) => w.includes('Sunday') || w.includes('day not understood')) && n.warnings.some((w) => w.includes('before it starts')) && n.warnings.some((w) => w.includes('no venue')))
+check('normaliser: session for a course not in the catalog is kept but warned', n.sessions.some((s) => s.course === 'XX999') && n.warnings.some((w) => w.includes('XX999')))
+check('normaliser: rooms gathered from sessions and the list, no blanks, no duplicates', n.rooms.join('|') === 'LH1|Lab 2|LH3|Hall A')
+check('normaliser: a course already in the campus catalog does not warn', !normaliseTimetable({ sessions: [{ course: 'CS300', day: 1, start: '08:00', end: '09:00', venue: 'A' }] }, { courses: ['cs300'] }).warnings.length)
+check('normaliser: survives garbage', JSON.stringify(normaliseTimetable('nonsense', { courses: [] })) === JSON.stringify({ programmes: [], courses: [], assignments: [], sessions: [], rooms: [], warnings: [] }) && normaliseTimetable(null, { courses: [] }).sessions.length === 0 && normaliseTimetable({ sessions: 'x', courses: 5 }, { courses: [] }).sessions.length === 0)
+const many = { sessions: Array.from({ length: 500 }, (_, k) => ({ course: 'CS210', day: 1 + (k % 6), start: `${String(6 + (k % 12)).padStart(2, '0')}:00`, end: `${String(7 + (k % 12)).padStart(2, '0')}:00`, venue: `R${k}` })) }
+check('normaliser: caps at 400 sessions with a warning', normaliseTimetable(many, { courses: ['CS210'] }).sessions.length === 400 && normaliseTimetable(many, { courses: ['CS210'] }).warnings.some((w) => w.includes('400')))
+check('normaliser: very long strings are clipped', normaliseTimetable({ courses: [{ code: 'CS1', title: 'x'.repeat(1000) }] }, { courses: [] }).courses[0].title.length === 160)
+
+// ---------------- ai-timetable
+const TT_TEXT = 'Monday 08:00-10:00 CS210 Databases (Dr Mwita) LH1. Tuesday 14:00-16:00 IS202 Systems Analysis Lab 2. '.repeat(3)
+const ttCfg = (t: string) => t === 'ai_settings' ? { data: { provider: 'gemini', model: 'm', api_key: 'KEY', enabled: true } } : { data: null }
+const ttRpc = (admin: boolean, manager: boolean, take = true) => (w: string, n: string) => n === 'is_admin' ? { data: admin, error: null } : n === 'is_platform_admin' ? { data: manager, error: null } : n === 'ai_take_use' ? { data: take, error: null } : { data: true, error: null }
+const aiJson = { candidates: [{ content: { parts: [{ text: JSON.stringify({ programmes: [], courses: [{ code: 'cs210', title: 'Databases', programme: 'BSc CS' }], assignments: [], sessions: [{ course: 'CS210', lecturer: 'Dr Mwita', day: 'Mon', start: '8', end: '10', venue: 'LH1' }], rooms: [], warnings: [] }) }] } }] }
+let sentToModel = ''
+globalThis.fetch = ((_u: string, init?: RequestInit) => { sentToModel = String(init?.body ?? ''); return Promise.resolve(new Response(JSON.stringify(aiJson), { status: 200 })) }) as typeof fetch
+base(); g.__mock.table = ttCfg; g.__mock.rpc = ttRpc(false, false)
+r = await run('ai-timetable', req({ text: TT_TEXT }, AUTH))
+check('timetable ai: a non-administrator is refused (403) before any AI call', r.status === 403 && did('rpc:ai_take_use').length === 0)
+g.__mock.rpc = ttRpc(true, true); r = await run('ai-timetable', req({ text: TT_TEXT }, AUTH))
+check('timetable ai: the app manager is refused (campus administrators only)', r.status === 403)
+g.__mock.rpc = ttRpc(true, false)
+r = await run('ai-timetable', req({ text: TT_TEXT, context: { programmes: ['BSc CS'], courses: ['CS210'], lecturers: ['Dr John Mwita'], rooms: ['LH1'] } }, AUTH))
+check('timetable ai: administrator gets a NORMALISED proposal (08:00-10:00, Monday = 1)', r.status === 200 && r.body.proposal.sessions[0].start === '08:00' && r.body.proposal.sessions[0].end === '10:00' && r.body.proposal.sessions[0].day === 1 && r.body.proposal.courses[0].code === 'CS210')
+check('timetable ai: the campus catalog names are sent to the model, never ids or emails', sentToModel.includes('Dr John Mwita') && sentToModel.includes('BSc CS') && !sentToModel.includes('@') && !/[0-9a-f]{8}-[0-9a-f]{4}/.test(sentToModel))
+check('timetable ai: document is marked untrusted in the prompt', sentToModel.includes('untrusted'))
+check('timetable ai: charged once, not refunded', did('rpc:ai_take_use').length === 1 && did('rpc:ai_refund_use').length === 0)
+r = await run('ai-timetable', req({ text: 'too short' }, AUTH)); check('timetable ai: short text -> 400', r.status === 400)
+r = await run('ai-timetable', req({ text: TT_TEXT }, { ...AUTH, 'content-length': '9999999' })); check('timetable ai: oversized -> 413', r.status === 413)
+g.__mock.rpc = ttRpc(true, false, false); r = await run('ai-timetable', req({ text: TT_TEXT }, AUTH))
+check('timetable ai: daily limit -> 429, nothing refunded', r.status === 429 && did('rpc:ai_refund_use').length === 0)
+g.__mock.rpc = ttRpc(true, false); globalThis.fetch = (() => Promise.resolve(new Response('upstream down', { status: 500 }))) as typeof fetch
+r = await run('ai-timetable', req({ text: TT_TEXT }, AUTH))
+check('timetable ai: provider failure -> 502, REFUNDED, provider text not echoed', r.status === 502 && did('rpc:ai_refund_use').length === 1 && !JSON.stringify(r.body).includes('upstream'))
+globalThis.fetch = (() => Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'not json at all' }] } }] }), { status: 200 }))) as typeof fetch
+r = await run('ai-timetable', req({ text: TT_TEXT }, AUTH)); check('timetable ai: unreadable model output -> 502 and refunded', r.status === 502 && did('rpc:ai_refund_use').length === 1)
+r = await run('ai-timetable', new Request('http://f', { method: 'POST', body: '{}' })); check('timetable ai: no token -> 401', r.status === 401)
 globalThis.fetch = realFetch
 
 console.log(`edge functions: ${pass} passed, ${fail} failed`)

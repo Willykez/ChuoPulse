@@ -33,8 +33,6 @@ data class CloudSnapshot(
   val notifications: List<NotificationItem>,
   val reads: Set<String>,
   val done: Set<String>,
-  val quizzes: List<Quiz>,
-  val attempts: List<QuizAttempt>,
   val files: List<FileRef>,
   val courseLecturers: Map<String, List<Pair<String, String>>>,
   val classMembers: List<ClassMember>
@@ -145,12 +143,50 @@ class CloudSync(private val remote: RemoteAdmin) {
 
   private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optString(k).takeIf { it.isNotBlank() }
 
-  private suspend fun rows(table: String, qs: String): JSONArray = remote.query(table, qs) ?: JSONArray()
+  private var cache: SyncCache? = null
+  private var networkDown = false
+  var servedFromCache = false
+    private set
+
+  fun cachedAt(userId: String): Long = Backend.appContext?.let { SyncCache(it, userId).syncedAt() } ?: 0L
+
+  fun markSynced(userId: String, at: Long) {
+    Backend.appContext?.let { SyncCache(it, userId).markSynced(at) }
+  }
+
+  private suspend fun fetch(table: String, qs: String): JSONArray? {
+    val key = "$table?$qs"
+    if (!networkDown) {
+      val live = remote.query(table, qs)
+      if (live != null) { cache?.put(key, live); return live }
+      if (!remote.networkFailed) return cache?.get(key)
+      networkDown = true
+    }
+    servedFromCache = true
+    return cache?.get(key)
+  }
+
+  private suspend fun rows(table: String, qs: String): JSONArray = fetch(table, qs) ?: JSONArray()
+
+  private suspend fun rpcRows(function: String, args: JSONObject): JSONArray? {
+    val key = "rpc:$function:$args"
+    if (!networkDown) {
+      val r = remote.rpcCall(function, args)
+      if (r.ok) return runCatching { JSONArray(r.body) }.getOrNull()?.also { cache?.put(key, it) }
+      if (r.error != RemoteError.NETWORK) return cache?.get(key)
+      networkDown = true
+    }
+    servedFromCache = true
+    return cache?.get(key)
+  }
 
   private inline fun JSONArray.each(block: (JSONObject) -> Unit) { for (i in 0 until length()) block(getJSONObject(i)) }
 
   suspend fun pull(me: UserProfile, uniCode: String): CloudSnapshot? {
-    val courseRows = remote.query("courses", "select=code,short_code,title&order=short_code&limit=2000") ?: return null
+    cache = Backend.appContext?.let { SyncCache(it, me.id) }
+    networkDown = false
+    servedFromCache = false
+    val courseRows = fetch("courses", "select=code,short_code,title&order=short_code&limit=2000") ?: return null
     val courses = mutableMapOf<String, String>()
     courseRows.each { courses[it.optString("short_code")] = it.optString("title") }
     val progNames = mutableMapOf<String, String>()
@@ -227,8 +263,9 @@ class CloudSync(private val remote: RemoteAdmin) {
     val mine = announcements.filter { it.authorId == me.id }.take(15)
     val stats = mutableMapOf<String, Pair<Int, Int>>()
     for (a in mine) {
-      val r = remote.rpcCall("announcement_stats", JSONObject().put("p_id", a.id))
-      if (r.ok) runCatching { JSONArray(r.body).getJSONObject(0).let { o -> stats[a.id] = o.optInt("delivered") to o.optInt("opened") } }
+      rpcRows("announcement_stats", JSONObject().put("p_id", a.id))?.let { arr ->
+        runCatching { arr.getJSONObject(0).let { o -> stats[a.id] = o.optInt("delivered") to o.optInt("opened") } }
+      }
     }
     val announcementsOut = announcements.map { a -> stats[a.id]?.let { (d, o) -> a.copy(totalStudents = d, readCount = o) } ?: a.copy(totalStudents = 0) }
 
@@ -280,9 +317,7 @@ class CloudSync(private val remote: RemoteAdmin) {
     val courseLecturers = mutableMapOf<String, List<Pair<String, String>>>()
     if (rep) {
       for (c in enrolled) {
-        val r = remote.rpcCall("course_lecturer_list", JSONObject().put("p_course", c))
-        if (r.ok) runCatching {
-          val a = JSONArray(r.body)
+        rpcRows("course_lecturer_list", JSONObject().put("p_course", c))?.let { a ->
           courseLecturers[c] = (0 until a.length()).map { i -> a.getJSONObject(i).let { o -> o.optString("lecturer_id") to o.optString("full_name") } }
         }
       }
@@ -324,62 +359,8 @@ class CloudSync(private val remote: RemoteAdmin) {
       ))
     }
 
-    val quizzes = mutableListOf<Quiz>()
-    val attempts = mutableListOf<QuizAttempt>()
-    val quizRows = rows("quizzes", "select=*&order=opens_at.desc&limit=200")
-    val qIds = mutableListOf<String>()
-    quizRows.each { qIds.add(it.optString("id")) }
-    if (qIds.isNotEmpty()) {
-      val inList = qIds.joinToString(",")
-      val qs = rows("quiz_questions", "select=*&quiz_id=in.($inList)&order=position")
-      val keys = mutableMapOf<String, JSONObject>()
-      rows("quiz_answer_keys", "select=*&limit=5000").each { keys[it.optString("question_id")] = it }
-      val byQuiz = mutableMapOf<String, MutableList<QuizQuestion>>()
-      qs.each { q ->
-        val kind = if (q.optString("kind") == "multiple_choice") QuestionType.MULTIPLE_CHOICE else QuestionType.SHORT_ANSWER
-        val opts = mutableListOf<String>()
-        q.optJSONArray("options")?.let { a -> for (i in 0 until a.length()) opts.add(a.optString(i)) }
-        val key = keys[q.optString("id")]
-        byQuiz.getOrPut(q.optString("quiz_id")) { mutableListOf() }.add(QuizQuestion(
-          id = q.optString("id"), type = kind, text = q.optString("body"), options = opts,
-          correctOption = key?.let { k -> if (k.isNull("correct_option")) null else k.optInt("correct_option") },
-          modelAnswer = key?.optString("model_answer").orEmpty().let { if (it == "null") "" else it },
-          points = q.optInt("points", 1)))
-      }
-      quizRows.each {
-        val c = short(it.optString("course_code"))
-        quizzes.add(Quiz(
-          id = it.optString("id"), courseCode = c, courseTitle = titleOf(c), lecturerId = it.optString("created_by"),
-          lecturerName = nameOf(it.optString("created_by")), title = it.optString("title"),
-          instructions = it.optString("instructions"), durationMinutes = it.optInt("duration_minutes", 10),
-          opensAt = millis(it.optString("opens_at")) ?: 0L, closesAt = millis(it.optString("closes_at")) ?: 0L,
-          questions = byQuiz[it.optString("id")].orEmpty()))
-      }
-      val atRows = rows("quiz_attempts", "select=*&quiz_id=in.($inList)&order=started_at.desc&limit=2000")
-      val ansByAttempt = mutableMapOf<String, MutableMap<String, String>>()
-      val awardedBy = mutableMapOf<String, MutableMap<String, Int>>()
-      rows("quiz_answers", "select=*&limit=20000").each {
-        val at = it.optString("attempt_id")
-        val qid = it.optString("question_id")
-        val ans = it.optString("answer")
-        ansByAttempt.getOrPut(at) { mutableMapOf() }[qid] = ans
-        if (!it.isNull("awarded_points")) awardedBy.getOrPut(at) { mutableMapOf() }[qid] = it.optInt("awarded_points")
-      }
-      atRows.each {
-        val sid = it.optString("student_id")
-        val (nm, num) = if (sid == me.id) me.fullName to (me.studentNumber ?: "") else names[sid] ?: ("Student" to "")
-        val st = when (it.optString("status")) { "submitted" -> AttemptStatus.SUBMITTED; "auto_submitted" -> AttemptStatus.AUTO_SUBMITTED; else -> AttemptStatus.IN_PROGRESS }
-        attempts.add(QuizAttempt(
-          id = it.optString("id"), quizId = it.optString("quiz_id"), studentId = sid, studentName = nm, studentNumber = num,
-          startedAt = millis(it.optString("started_at")) ?: 0L, deadlineAt = millis(it.optString("deadline_at")) ?: 0L,
-          status = st, answers = ansByAttempt[it.optString("id")].orEmpty(),
-          submittedAt = millis(it.optString("submitted_at")), awarded = awardedBy[it.optString("id")].orEmpty(),
-          marked = it.optBoolean("marked")))
-      }
-    }
-
     return CloudSnapshot(courses, programmes, rooms, enrolled, teaches, rep, sessions, announcementsOut, materials,
-      deadlinesOut, submissions, notifications, reads, done, quizzes, attempts, files, courseLecturers,
+      deadlinesOut, submissions, notifications, reads, done, files, courseLecturers,
       members.values.sortedBy { it.name })
   }
 }

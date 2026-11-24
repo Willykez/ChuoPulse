@@ -87,23 +87,6 @@ select test.logout(); select test.login(test.id('stu_u'));
 select test.check('5d other campus: no material, no file', (select count(*) from public.study_materials)=0 and (select count(*) from storage.objects where bucket_id='materials')=0);
 select test.logout();
 
--- ===== 6. quizzes
-select test.login(test.id('lec_c'));
-select test.check('6a create quiz', test.try($q$select public.create_quiz('CS210','Quiz 1','be quick',20, now()-interval '1 minute', now()+interval '2 hours',
-  '[{"kind":"multiple_choice","body":"2+2?","options":["3","4"],"correct":1,"points":2},{"kind":"short_answer","body":"Define SQL","model_answer":"x","points":4}]'::jsonb)$q$)='OK');
-select test.logout(); select test.login(test.id('stu1'));
-select test.check('6b student sees quiz but NOT questions before start', (select count(*) from public.quizzes)=1 and (select count(*) from public.quiz_questions)=0);
-select test.check('6c start attempt', test.try($q$select * from public.start_quiz_attempt((select id from public.quizzes limit 1))$q$)='OK');
-select test.check('6d questions visible after start, keys never', (select count(*) from public.quiz_questions)=2 and (select count(*) from public.quiz_answer_keys)=0);
-select test.check('6e save + submit', test.try($q$select public.save_quiz_answer((select id from public.quiz_attempts limit 1),(select id from public.quiz_questions where kind='multiple_choice'),'1')$q$)='OK'
-  and test.try($q$select public.submit_quiz_attempt((select id from public.quiz_attempts limit 1))$q$)='OK');
-select test.check('6f MC score immediate', (public.quiz_attempt_score((select id from public.quiz_attempts limit 1))->>'choice_points')::int=2);
-select test.logout(); select test.login(test.id('lec_c'));
-select test.check('6g lecturer marks written answer', test.try($q$select public.grade_quiz_attempt((select id from public.quiz_attempts limit 1), jsonb_build_object((select id::text from public.quiz_questions where kind='short_answer'), 3))$q$)='OK');
-select test.logout(); select test.login(test.id('stu2'));
-select test.check('6h other student cannot read stu1 attempt', (select count(*) from public.quiz_attempts)=0);
-select test.logout();
-
 -- ===== 7. admin tools
 select test.login(test.id('adm_c'));
 select test.check('7a set_class_rep', test.try($q$select public.set_class_rep(test.id('stu2'), true)$q$)='OK');

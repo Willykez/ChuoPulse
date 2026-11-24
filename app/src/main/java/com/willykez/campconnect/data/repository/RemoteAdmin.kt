@@ -67,9 +67,12 @@ class RemoteAdmin(
   private fun result(r: SupabaseClient.Result?): RemoteResult =
     if (r != null && r.isSuccessful) RemoteResult(true, body = r.body) else errorOf(r)
 
+  @Volatile var networkFailed = false
+
   suspend fun query(table: String, qs: String): JSONArray? {
-    val r = authed { client.select(table, qs, it) } ?: return null
-    if (!r.isSuccessful) return null
+    val r = authed { client.select(table, qs, it) }
+    networkFailed = r == null
+    if (r == null || !r.isSuccessful) return null
     return try { r.jsonArray() } catch (e: Exception) { null }
   }
 

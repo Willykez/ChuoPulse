@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AssignmentTurnedIn
-import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -81,13 +80,6 @@ fun DeadlinesScreen(
 
       Spacer(modifier = Modifier.height(12.dp))
       Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        ActionButton(
-          label = viewModel.t("Quizzes", "Majaribio"),
-          icon = Icons.Default.Quiz,
-          onClick = { viewModel.setTab(ScreenTab.QUIZZES) },
-          modifier = Modifier.weight(1f),
-          tag = "nav_to_quizzes_btn"
-        )
         ActionButton(
           label = if (user.role == Role.STUDENT) viewModel.t("My works", "Kazi zangu") else viewModel.t("Submissions", "Kazi"),
           icon = Icons.Default.AssignmentTurnedIn,
